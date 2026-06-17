@@ -1,0 +1,7 @@
+/claudectx
+/dist/
+*.test
+*.out
+
+# Claude Code local settings
+.claude/settings.local.json
