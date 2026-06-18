@@ -161,6 +161,24 @@ There is no partial-failure window: steps 1–3 are local and cheap, and step 4 
 single `exec`. If login is required (fresh profile or expired refresh token), Claude
 Code itself handles the OAuth flow inside that profile's own slot.
 
+### Current profile (no-arg invocation)
+
+Bare `claudectx` launches the **current profile** rather than always prompting. The
+current profile is resolved in priority order:
+
+```
+1. CLAUDECTX_PROFILE env var   → transient override; launch it, do NOT persist
+                                  (error if the named profile does not exist)
+2. state.json lastUsed         → the saved default; launch it directly
+3. interactive picker          → only when nothing is saved (first run);
+                                  the choice is persisted, then launched
+```
+
+`use <name>` and `pick` both **persist** the choice (write `lastUsed`); the
+`CLAUDECTX_PROFILE` override deliberately does not, so it stays a one-shot. This
+keeps `state.json` as a convenience default only — it is still not authoritative
+"active" state (multiple profiles can run at once in different shells).
+
 ### Shell-shim alternative
 
 For users who prefer typing plain `claude`, `claudectx` can install a shell function
@@ -173,16 +191,19 @@ shim is opt-in. Both set the identical env var.
 ## Planned commands
 
 ```
-claudectx                      interactive picker → use selected profile
-claudectx use <name> [args…]   exec claude in <name> (core command; forwards args)
+claudectx                      launch the current profile (env > saved > picker)
+claudectx use <name> [args…]   set current = <name> and exec claude (forwards args)
+claudectx pick                 choose interactively, persist, and launch
 claudectx add <name>           create profiles/<name>/ + shared-layer symlinks
 claudectx remove <name>        delete a profile dir (prompts; never touches shared/)
 claudectx list                 list profiles, mark which have a credential slot
-claudectx current              print profile for $CLAUDE_CONFIG_DIR (or "default")
+claudectx current              print the current profile (+ this shell's session)
 claudectx rename <old> <new>   rename a profile dir + its Keychain slot follows*
 claudectx shared <cmd>         manage shared agents/skills/commands
 claudectx shell-init           print shell function for the env-var shim
 ```
+
+Override the current profile for a single invocation with `CLAUDECTX_PROFILE=<name>`.
 
 \* **Rename caveat:** the Keychain slot name is `sha256(dir)`-derived, so renaming a
 profile dir changes its slot and would orphan the old credential → forces re-login in

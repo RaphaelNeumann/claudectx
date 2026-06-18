@@ -1,0 +1,49 @@
+# Persistence of the current profile + CLAUDECTX_PROFILE override.
+# Fake `claude` on PATH prints the CLAUDE_CONFIG_DIR it was launched with.
+[windows] skip
+
+chmod 0777 bin/claude
+env PATH=$WORK/bin:$PATH
+
+exec claudectx add personal
+exec claudectx add work
+
+# `use` sets the current profile and launches it.
+exec claudectx use personal
+stdout 'profiles/personal'
+
+# Bare `claudectx` now launches the saved current directly (no picker).
+exec claudectx
+stdout 'profiles/personal'
+
+# `current` reports the saved default.
+exec claudectx current
+stdout 'current: personal \(saved default\)'
+
+# CLAUDECTX_PROFILE overrides for this invocation...
+env CLAUDECTX_PROFILE=work
+exec claudectx
+stdout 'profiles/work'
+exec claudectx current
+stdout 'CLAUDECTX_PROFILE'
+
+# ...but does not change the saved default: unset → back to personal.
+env CLAUDECTX_PROFILE=
+exec claudectx
+stdout 'profiles/personal'
+
+# A non-existent override errors clearly.
+env CLAUDECTX_PROFILE=ghost
+! exec claudectx
+stderr 'does not exist'
+env CLAUDECTX_PROFILE=
+
+# Switching the current with `use` persists the new choice.
+exec claudectx use work
+stdout 'profiles/work'
+exec claudectx
+stdout 'profiles/work'
+
+-- bin/claude --
+#!/bin/sh
+echo "FAKE CLAUDE CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"

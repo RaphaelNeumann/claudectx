@@ -117,19 +117,22 @@ Results:
 ## Planned commands
 
 ```
-claudectx                       interactive picker → use selected profile
-claudectx use <name> [args…]    exec claude with CLAUDE_CONFIG_DIR set (core; forwards args)
+claudectx                       launch the current profile (env > saved > picker)
+claudectx use <name> [args…]    set current = <name> and exec claude (forwards args)
+claudectx pick                  choose interactively, persist, and launch
 claudectx add <name>            create profile dir + shared-layer symlinks
 claudectx remove <name>         delete a profile dir (never touches shared/)
 claudectx list                  list profiles, mark which have a credential slot
-claudectx current               print profile for $CLAUDE_CONFIG_DIR (or "default")
+claudectx current               print the current profile (+ this shell's session)
 claudectx rename <old> <new>    rename a profile (warns: slot is dir-derived → re-login)
 claudectx shared <cmd>          manage shared agents/skills/commands
 claudectx shell-init            print shell function for the env-var shim
 ```
 
-(No `refresh` command — token rotation is handled by Claude Code inside each
-profile's own slot; there is nothing to re-capture.)
+Current-profile persistence: bare `claudectx` resolves `CLAUDECTX_PROFILE` (one-shot
+override) → saved `lastUsed` → picker (first run only). `use`/`pick` persist; the
+env override does not. (No `refresh` command — token rotation is handled by Claude
+Code inside each profile's own slot.)
 
 ---
 

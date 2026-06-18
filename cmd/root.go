@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -16,17 +17,55 @@ import (
 // version is overridden at release time via -ldflags -X.
 var version = "dev"
 
+// profileEnv overrides the current profile for a single invocation, without
+// changing the saved default.
+const profileEnv = "CLAUDECTX_PROFILE"
+
 var rootCmd = &cobra.Command{
 	Use:   "claudectx",
 	Short: "Switch between isolated Claude Code profiles",
 	Long: "claudectx manages multiple isolated Claude Code profiles (one per account)\n" +
 		"and launches `claude` into the chosen one via CLAUDE_CONFIG_DIR.\n\n" +
-		"With no arguments it opens an interactive picker.",
+		"With no arguments it launches the current profile:\n" +
+		"  CLAUDECTX_PROFILE (override) → saved current → interactive picker (first run).\n" +
+		"Use `claudectx use <name>` to change the current profile, or `claudectx pick`\n" +
+		"to choose interactively.",
 	Version:       version,
 	Args:          cobra.NoArgs,
-	RunE:          func(cmd *cobra.Command, args []string) error { return runPicker() },
+	RunE:          func(cmd *cobra.Command, args []string) error { return runRoot() },
 	SilenceUsage:  true,
 	SilenceErrors: true,
+}
+
+// resolveCurrent returns the profile that bare `claudectx` would launch and its
+// source: "env" (CLAUDECTX_PROFILE), "saved" (persisted default), or "" (none).
+func resolveCurrent() (name, source string) {
+	if p := strings.TrimSpace(os.Getenv(profileEnv)); p != "" {
+		return p, "env"
+	}
+	if st, err := store.Load(); err == nil && st.LastUsed != "" {
+		return st.LastUsed, "saved"
+	}
+	return "", ""
+}
+
+// runRoot handles the no-argument invocation: launch the current profile, or fall
+// back to the picker on first run.
+func runRoot() error {
+	name, source := resolveCurrent()
+	switch source {
+	case "env":
+		if !profile.Exists(name) {
+			return fmt.Errorf("%s=%q: profile does not exist (run `claudectx add %s`)", profileEnv, name, name)
+		}
+		return launch.Exec(name, nil) // transient override — do not persist
+	case "saved":
+		if profile.Exists(name) {
+			return launch.Exec(name, nil) // already the saved default — no need to re-persist
+		}
+		// saved profile was removed; fall through to the picker
+	}
+	return runPicker()
 }
 
 // Execute runs the root command.
