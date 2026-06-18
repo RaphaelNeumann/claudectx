@@ -19,6 +19,18 @@ right `CLAUDE_CONFIG_DIR` set — no credential surgery.
 ## Install
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/RaphaelNeumann/claudectx/main/install.sh | sh
+```
+
+Installs the latest release to `~/.local/bin`. Override the location with
+`BINDIR=/usr/local/bin`, or pin a version with `VERSION=v0.1.0`. macOS only for now
+(Apple Silicon or Intel).
+
+### From source
+
+```sh
+go install github.com/raphaelneumann/claudectx@latest
+# or, in a clone:
 go build -o claudectx .
 ```
 
