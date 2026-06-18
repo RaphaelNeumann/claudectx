@@ -6,8 +6,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 
-	"github.com/rneumann/claudectx/internal/profile"
-	"github.com/rneumann/claudectx/internal/store"
+	"github.com/raphaelneumann/claudectx/internal/profile"
+	"github.com/raphaelneumann/claudectx/internal/store"
 )
 
 var (

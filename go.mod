@@ -1,4 +1,4 @@
-module github.com/rneumann/claudectx
+module github.com/raphaelneumann/claudectx
 
 go 1.26.1
 

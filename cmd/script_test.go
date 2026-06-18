@@ -7,7 +7,7 @@ import (
 
 	"github.com/rogpeppe/go-internal/testscript"
 
-	"github.com/rneumann/claudectx/cmd"
+	"github.com/raphaelneumann/claudectx/cmd"
 )
 
 // TestMain registers `claudectx` as a testscript command so .txtar scripts can run

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/rneumann/claudectx/internal/paths"
-	"github.com/rneumann/claudectx/internal/profile"
+	"github.com/raphaelneumann/claudectx/internal/paths"
+	"github.com/raphaelneumann/claudectx/internal/profile"
 )
 
 // Exec replaces the current process with `claude`, with CLAUDE_CONFIG_DIR pointed

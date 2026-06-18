@@ -62,7 +62,7 @@ contend over, therefore no re-capture invariant and no rotation-staleness risk.
 
 - **Go 1.21+**, `CGO_ENABLED=0`, single static binary.
 - No CGO; must cross-compile via `GOOS`/`GOARCH` without a C toolchain.
-- Module path: `github.com/rneumann/claudectx`
+- Module path: `github.com/raphaelneumann/claudectx`
 
 ---
 

@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
-	"github.com/rneumann/claudectx/internal/profile"
+	"github.com/raphaelneumann/claudectx/internal/profile"
 )
 
 var removeForce bool

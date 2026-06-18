@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rneumann/claudectx/internal/profile"
+	"github.com/raphaelneumann/claudectx/internal/profile"
 )
 
 var addCmd = &cobra.Command{

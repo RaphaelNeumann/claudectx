@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/rneumann/claudectx/internal/paths"
+	"github.com/raphaelneumann/claudectx/internal/paths"
 )
 
 // sandbox points the config root at a temp dir for the duration of a test.

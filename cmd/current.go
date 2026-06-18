@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rneumann/claudectx/internal/paths"
+	"github.com/raphaelneumann/claudectx/internal/paths"
 )
 
 var currentCmd = &cobra.Command{

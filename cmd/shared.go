@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rneumann/claudectx/internal/paths"
-	"github.com/rneumann/claudectx/internal/profile"
+	"github.com/raphaelneumann/claudectx/internal/paths"
+	"github.com/raphaelneumann/claudectx/internal/profile"
 )
 
 var sharedCmd = &cobra.Command{

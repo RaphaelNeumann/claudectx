@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/rneumann/claudectx/internal/paths"
+	"github.com/raphaelneumann/claudectx/internal/paths"
 )
 
 // State is the on-disk shape of state.json.

@@ -17,7 +17,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/rneumann/claudectx/internal/paths"
+	"github.com/raphaelneumann/claudectx/internal/paths"
 )
 
 var nameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)

@@ -189,7 +189,7 @@ shared slot and claudectx no longer writes `~/.claude.json`.)
 - **`rename` decision made** (Open question 2): warn-and-relogin, to keep the
   "Claude Code owns all credentials" invariant. Implemented + documented.
 - **Release tooling + tests added:** `.goreleaser.yaml` (darwin amd64/arm64, brew
-  tap `rneumann/homebrew-tap`), `Makefile`, version injection via
+  tap `RaphaelNeumann/homebrew-tap`), `Makefile`, version injection via
   `-ldflags -X .../cmd.version`, and testscript CLI integration tests in
   `cmd/testdata/script/` (basics + launch). All green; gofmt clean.
 

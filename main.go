@@ -1,6 +1,6 @@
 package main
 
-import "github.com/rneumann/claudectx/cmd"
+import "github.com/raphaelneumann/claudectx/cmd"
 
 func main() {
 	cmd.Execute()
