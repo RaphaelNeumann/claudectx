@@ -1,12 +1,15 @@
 # claudectx
 
-Switch between multiple isolated Claude Code profiles (one per account /
-subscription) on macOS, without re-authenticating on every switch.
+**Switch between multiple Claude Code accounts, single command, and no re-logins.**
+
+> macOS today; Linux is planned (see [architecture.md](architecture.md) →
+> "Platform support").
 
 A **profile** is its own `CLAUDE_CONFIG_DIR`. Claude Code keeps each profile's
-credentials, history, and MCP config separate automatically (it even derives a
-distinct Keychain slot per config dir). `claudectx use <name>` just launches
-`claude` with the right `CLAUDE_CONFIG_DIR` set — no credential surgery.
+credentials, history, and MCP config fully isolated (it even derives a distinct
+Keychain slot per config dir), so accounts never collide — you can even run two at
+once in different terminals. `claudectx use <name>` just launches `claude` with the
+right `CLAUDE_CONFIG_DIR` set — no credential surgery.
 
 **Agents, skills, and commands are shared** across all profiles via a common
 `shared/` layer (symlinked into each profile), so you define them once.
