@@ -1,0 +1,55 @@
+# No profiles initially.
+exec claudectx list
+stdout 'No profiles yet'
+
+# Add two profiles.
+exec claudectx add personal
+stdout 'Created profile "personal"'
+exec claudectx add work
+
+# Both show up in list.
+exec claudectx list
+stdout 'personal'
+stdout 'work'
+
+# Shared-layer symlinks are created in each profile.
+exists $XDG_CONFIG_HOME/claudectx/profiles/work/agents
+exists $XDG_CONFIG_HOME/claudectx/profiles/work/skills
+exists $XDG_CONFIG_HOME/claudectx/profiles/work/commands
+
+# A file dropped in the shared layer is visible through a profile's symlink.
+exec claudectx shared path
+cp stdout sharedpath.txt
+mkdir $XDG_CONFIG_HOME/claudectx/shared/agents
+# (shared/agents already exists; write an agent and confirm a profile sees it)
+exec sh -c 'echo demo > $XDG_CONFIG_HOME/claudectx/shared/agents/demo.md'
+exists $XDG_CONFIG_HOME/claudectx/profiles/personal/agents/demo.md
+
+# Invalid names are rejected.
+! exec claudectx add ../evil
+stderr 'path separators'
+! exec claudectx add a/b
+stderr 'path separators'
+
+# Duplicate add is rejected.
+! exec claudectx add personal
+stderr 'already exists'
+
+# current with no env var reports the default.
+exec claudectx current
+stdout 'default'
+
+# Rename moves the profile and keeps the shared symlinks.
+exec claudectx rename work office
+stdout 'Renamed'
+! exists $XDG_CONFIG_HOME/claudectx/profiles/work
+exists $XDG_CONFIG_HOME/claudectx/profiles/office/agents
+
+# Remove (forced) deletes the profile but not the shared copy.
+exec claudectx remove -f office
+! exists $XDG_CONFIG_HOME/claudectx/profiles/office
+exists $XDG_CONFIG_HOME/claudectx/shared/agents
+
+# use on a missing profile errors and does not exec.
+! exec claudectx use nope
+stderr 'does not exist'

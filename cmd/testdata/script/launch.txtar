@@ -1,0 +1,21 @@
+# The launcher execs `claude` with CLAUDE_CONFIG_DIR set to the profile dir.
+# Uses a fake `claude` on PATH that prints the env var it received.
+[windows] skip
+
+chmod 0777 bin/claude
+env PATH=$WORK/bin:$PATH
+
+exec claudectx add personal
+exec claudectx use personal
+stdout 'FAKE CLAUDE'
+stdout 'CLAUDE_CONFIG_DIR='
+stdout 'profiles/personal'
+
+# Extra args after the name are forwarded to claude.
+exec claudectx use personal -- --hello world
+stdout 'args: --hello world'
+
+-- bin/claude --
+#!/bin/sh
+echo "FAKE CLAUDE CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"
+echo "args: $@"

@@ -5,10 +5,20 @@
 A CLI tool to switch between multiple Claude Code accounts/subscriptions on macOS
 without re-authenticating. One command swaps the active account in ~300ms.
 
-## Current status (paused 2026-06-16)
+## Current status (architecture revised 2026-06-17)
 
-Architecture defined. PoC validated. Not yet scaffolded as a real Go project.
-**Next step: scaffold the Go project structure and start implementing.**
+**Architecture was redesigned on 2026-06-17.** The original single-Keychain-slot
+"park/restore + patch `~/.claude.json`" model was dropped after discovering that
+`CLAUDE_CONFIG_DIR` gives each profile its own isolated config tree **and** its own
+auto-namespaced Keychain slot. A profile is now just its own `CLAUDE_CONFIG_DIR`,
+and claudectx is a launcher — it never touches credentials.
+
+Read `architecture.md` (authoritative, fully revised). The "Critical technical
+decisions" section below is **superseded** and kept only as historical rationale;
+see `architecture.md` Appendix A.
+
+Chosen goal: **isolated accounts/history, shared agents/skills/commands.**
+**Next step: scaffold the Go project around the env-var launcher model.**
 
 ---
 
@@ -24,7 +34,30 @@ Architecture defined. PoC validated. Not yet scaffolded as a real Go project.
 
 ---
 
-## Critical technical decisions (proven by testing, not just theory)
+## Critical technical decisions — REVISED MODEL (2026-06-17)
+
+The current design is the `CLAUDE_CONFIG_DIR`-per-profile model. Key points:
+
+1. **A profile = its own `CLAUDE_CONFIG_DIR`.** CC reads/writes its whole config
+   tree (incl. `.claude.json`, history, MCP) from there. Proven empirically.
+2. **Credentials isolate for free.** CC derives the Keychain slot name from the
+   config dir: `Claude Code-credentials-<sha256(dir)[:8]>`. Each profile gets its
+   own slot; claudectx never touches credentials.
+3. **`use` is a launcher**, not a mutator: `exec env CLAUDE_CONFIG_DIR=… claude`.
+   No global state changes, so simultaneous multi-account is possible.
+4. **Shared layer = static directory symlinks.** `profiles/<name>/{agents,skills,
+   commands}` symlink to a single `shared/` copy, set at profile creation. No
+   per-switch mutation → no deletion risk.
+
+See `architecture.md` for the authoritative spec and Appendix A for why the
+original design (below) was abandoned.
+
+---
+
+## Original critical technical decisions — SUPERSEDED (kept for history)
+
+> ⚠️ The four decisions below describe the dropped single-slot design. They are
+> **no longer how claudectx works.** Do not implement against them.
 
 ### 1. Use `/usr/bin/security` CLI, never `go-keyring`
 
@@ -74,8 +107,9 @@ Results:
 - `spf13/cobra` — commands
 - `charmbracelet/huh` — interactive account picker
 - `charmbracelet/lipgloss` — output styling
-- `os/exec` → `/usr/bin/security` — Keychain (raw, no library)
-- stdlib `encoding/json` — config/identity files
+- `os/exec` + `syscall.Exec` — launch `claude` with `CLAUDE_CONFIG_DIR` set
+- stdlib `encoding/json` — `state.json` only (no credential/identity files)
+- **No Keychain code** — Claude Code owns credentials per profile dir
 - `goreleaser` — release + brew tap
 
 ---
@@ -83,58 +117,87 @@ Results:
 ## Planned commands
 
 ```
-claudectx                     interactive picker
-claudectx use <name>          switch to context (core command)
-claudectx add <name>          snapshot current session as <name>
-claudectx remove <name>       delete a saved context
-claudectx list                list contexts, mark active
-claudectx current             print active context + account info
-claudectx rename <old> <new>  rename a context
-claudectx refresh             manually re-capture active context tokens
+claudectx                       interactive picker → use selected profile
+claudectx use <name> [args…]    exec claude with CLAUDE_CONFIG_DIR set (core; forwards args)
+claudectx add <name>            create profile dir + shared-layer symlinks
+claudectx remove <name>         delete a profile dir (never touches shared/)
+claudectx list                  list profiles, mark which have a credential slot
+claudectx current               print profile for $CLAUDE_CONFIG_DIR (or "default")
+claudectx rename <old> <new>    rename a profile (warns: slot is dir-derived → re-login)
+claudectx shared <cmd>          manage shared agents/skills/commands
+claudectx shell-init            print shell function for the env-var shim
 ```
+
+(No `refresh` command — token rotation is handled by Claude Code inside each
+profile's own slot; there is nothing to re-capture.)
 
 ---
 
-## Storage layout (target)
+## Storage layout (target — REVISED)
 
 ```
 ~/.config/claudectx/
-  state.json          { "active": "<name>", "updatedAt": "<RFC3339>" }
-  contexts/
-    <name>/
-      identity.json   { "oauthAccount": {...}, "userID": "..." }
+  state.json                 { "lastUsed": "<name>", "updatedAt": "<RFC3339>" }  # picker default only
+  shared/                    # one real copy, shared by ALL profiles
+    agents/  skills/  commands/
+  profiles/
+    <name>/                  # == CLAUDE_CONFIG_DIR for this profile
+      agents   -> ../../shared/agents     # static dir symlinks (set at `add`)
+      skills   -> ../../shared/skills
+      commands -> ../../shared/commands
+      .claude.json  backups/  history.jsonl  projects/ …   # CC-owned, isolated
 
-Keychain:
-  "claudectx:<name>"  parked credential per context (raw JSON, no encoding)
-  "Claude Code-credentials"  live slot owned by Claude Code
+Keychain (managed entirely by Claude Code, not claudectx):
+  "Claude Code-credentials-<sha256(profileDir)[:8]>"   # per-profile slot, auto-namespaced
 ```
+
+No `claudectx:<name>` parked entries, no shared live slot, no `identity.json`.
+See `architecture.md` for the full layout.
 
 ---
 
 ## Open questions before v1 ship
 
-1. **Refresh token rotation** — does `refreshToken` rotate on every `accessToken`
-   refresh? Observed stable in one session; confirm over 24h. Critical for
-   understanding the blast radius of a missed re-capture.
-2. **Keychain ACL after code signing** — unsigned binary had zero prompts. Re-test
-   after signing; may need an entitlement or a one-time `security unlock-keychain`.
-3. **`~/.claude.json` write race** — atomic rename handles most cases; evaluate if
-   an advisory `flock` is needed for the read-modify-write cycle.
+Authoritative list lives in `architecture.md` ("Open questions"). Summary:
+
+1. **Switch-back / rotation persistence** — confirm leaving and returning to a
+   profile (and crossing an ~8h token refresh) never forces a re-login. Expected to
+   hold since each profile owns its slot; not yet observed over time.
+2. **Rename / credential portability** — decided: warn-and-relogin (the slot is
+   `sha256(dir)`-derived, so a rename orphans the credential).
+3. **`$CLAUDE_CONFIG_DIR/.claude.json` contents** — audit exactly what is isolated
+   there and whether any "global" bits (e.g. settings.json) deserve sharing.
+
+(The pre-redesign questions — refresh-token rotation under the single shared slot,
+Keychain ACL after signing, `~/.claude.json` write race — are obsolete: there is no
+shared slot and claudectx no longer writes `~/.claude.json`.)
 
 ---
 
-## What to do next session
+## Progress / what to do next
 
-1. `cd /Users/rneumann/projects/claudectx`
-2. Run `go mod init github.com/rneumann/claudectx`
-3. Scaffold the directory structure:
-   ```
-   cmd/           cobra commands (use.go, add.go, remove.go, list.go, current.go, rename.go, refresh.go)
-   internal/
-     keychain/    security CLI wrapper
-     store/       state.json + identity.json read/write
-     claude/      ~/.claude.json patcher
-   main.go
-   ```
-4. Start with `internal/keychain` (the foundation everything else depends on) and
-   its tests using a sandbox Keychain service name.
+**Done (2026-06-17 → 18):**
+- Go project scaffolded: `cmd/` (use, add, remove, list, current, rename, shared,
+  shell-init, hidden _profile-dir) + `internal/{paths,store,profile,launch}`.
+  Builds clean, `go vet` clean, `internal/profile` has passing tests.
+- **Core model validated live** (see `architecture.md` "Resolved validations"):
+  credential isolation confirmed (fresh login required, separate Keychain slot),
+  the `SlotName()` hash matched the real slot byte-for-byte, and a shared probe
+  agent appeared in a profile session's `/agents` (dir-level symlinks work).
+- A real `personal` profile exists and is logged in.
+
+- **`rename` decision made** (Open question 2): warn-and-relogin, to keep the
+  "Claude Code owns all credentials" invariant. Implemented + documented.
+- **Release tooling + tests added:** `.goreleaser.yaml` (darwin amd64/arm64, brew
+  tap `rneumann/homebrew-tap`), `Makefile`, version injection via
+  `-ldflags -X .../cmd.version`, and testscript CLI integration tests in
+  `cmd/testdata/script/` (basics + launch). All green; gofmt clean.
+
+**Next:**
+1. Day-2 persistence test (Open question 1): switch away/back + cross an ~8h token
+   refresh without a forced re-login. (Only confirmable over time.)
+2. `brew install goreleaser`, then `make release-check` / `make snapshot` to verify
+   the release pipeline (goreleaser not installed here yet).
+3. Resolve Open question 3 (`$CLAUDE_CONFIG_DIR/.claude.json` contents & whether any
+   global bits need sharing).
+4. Init git, first commit, push, tag for the first goreleaser release.

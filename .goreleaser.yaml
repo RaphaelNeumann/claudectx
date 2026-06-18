@@ -1,0 +1,61 @@
+version: 2
+
+project_name: claudectx
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: claudectx
+    main: .
+    binary: claudectx
+    env:
+      - CGO_ENABLED=0
+    # macOS-only: the per-profile Keychain slot detection relies on /usr/bin/security.
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/rneumann/claudectx/cmd.version={{ .Version }}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+brews:
+  - name: claudectx
+    repository:
+      owner: rneumann
+      name: homebrew-tap
+    homepage: "https://github.com/rneumann/claudectx"
+    description: "Switch between isolated Claude Code profiles on macOS"
+    license: "MIT"
+    install: |
+      bin.install "claudectx"
+    test: |
+      system "#{bin}/claudectx", "--version"
+
+release:
+  github:
+    owner: rneumann
+    name: claudectx

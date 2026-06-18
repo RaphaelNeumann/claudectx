@@ -1,11 +1,67 @@
 # claudectx — Technical Architecture
 
+> **Revised 2026-06-17.** This supersedes the original single-Keychain-slot design.
+> A profile is now its own `CLAUDE_CONFIG_DIR`. See **Appendix A** for why the old
+> "park/restore one slot + patch `~/.claude.json`" approach was dropped.
+
+---
+
+## What claudectx is
+
+A CLI that manages multiple **isolated** Claude Code profiles (one per account /
+subscription) on macOS and launches `claude` into the chosen one. Each profile keeps
+its own credentials, history, MCP config, and tips; **agents, skills, and commands
+are shared** across all profiles via a common layer.
+
+Switching is launching `claude` with a per-profile `CLAUDE_CONFIG_DIR` — no
+credential surgery, no global-state mutation.
+
+---
+
+## Core mechanism — `CLAUDE_CONFIG_DIR` per profile
+
+Claude Code reads/writes its **entire** config tree from `$CLAUDE_CONFIG_DIR` when
+that env var is set, instead of the default `~/.claude/` + `~/.claude.json`.
+
+Proven on 2026-06-17 (CC v2.1.179): with `CLAUDE_CONFIG_DIR=/tmp/probe`, Claude Code
+created `/tmp/probe/.claude.json` and `/tmp/probe/backups/`, and `claude mcp list`
+saw none of the global config — full isolation.
+
+### Credentials isolate automatically
+
+The Keychain **service name is derived from the config dir.** From the decompiled
+`Hv()` resolver:
+
+| `CLAUDE_CONFIG_DIR` | Keychain service used |
+|---------------------|-----------------------|
+| unset (default)     | `Claude Code-credentials` |
+| set to `<dir>`      | `Claude Code-credentials-<first 8 hex of sha256(dir)>` |
+
+So **each profile gets its own credential slot for free.** claudectx never reads,
+writes, parks, or copies credentials. Claude Code's own login flow writes the slot;
+Claude Code's own token refresh rotates it in place. There is no shared slot to
+contend over, therefore no re-capture invariant and no rotation-staleness risk.
+
+> ✅ Confirmed live on 2026-06-18: logging a real account into a profile dir created
+> exactly the predicted slot `Claude Code-credentials-<sha256(absDir)[:8]>` (the
+> session required a fresh login; the default slot was untouched). `acct` = the
+> macOS login name. See **Resolved validations**.
+
+### What this buys us
+
+- **Isolated** per profile: credentials, `~/.claude.json` state, project history,
+  MCP servers, tips/onboarding, caches.
+- **Shared** across profiles: agents, skills, commands (via the shared layer below).
+- **Simultaneous** accounts: two profiles can run in two terminals at once.
+- **No destructive failure modes**: claudectx never mutates a global file mid-flight
+  and never deletes user content on a switch (the shared layer is static symlinks).
+
 ---
 
 ## Language & build constraints
 
 - **Go 1.21+**, `CGO_ENABLED=0`, single static binary.
-- No CGO. The binary must cross-compile with `GOOS`/`GOARCH` without a C toolchain.
+- No CGO; must cross-compile via `GOOS`/`GOARCH` without a C toolchain.
 - Module path: `github.com/rneumann/claudectx`
 
 ---
@@ -14,68 +70,17 @@
 
 | Concern | Package | Decision |
 |---------|---------|----------|
-| Commands | `spf13/cobra` | Standard; subcommand routing |
-| Interactive picker | `charmbracelet/huh` | Lightweight select; no full TUI needed |
-| Output styling | `charmbracelet/lipgloss` | list/current views only |
-| Config/identity | stdlib `encoding/json` | Config is small; no viper |
-| Keychain | `os/exec` → `/usr/bin/security` | See credential mechanism below |
-| Testing | stdlib `testing` + `rogpeppe/go-internal/testscript` | Script-based CLI integration tests |
+| Commands | `spf13/cobra` | Subcommand routing |
+| Interactive picker | `charmbracelet/huh` | Lightweight select; no full TUI |
+| Output styling | `charmbracelet/lipgloss` | `list`/`current` views only |
+| Config/state | stdlib `encoding/json` | Small; no viper |
+| Process launch | `os/exec` + `syscall.Exec` | exec `claude` with env set |
+| Testing | stdlib `testing` + `rogpeppe/go-internal/testscript` | Script-based CLI tests |
 | Release | `goreleaser` | Cross-platform binaries + brew tap |
 
----
-
-## Credential mechanism
-
-**Drive `/usr/bin/security` via `os/exec`. Do not use `go-keyring` or any library
-that wraps the raw keychain value.**
-
-`go-keyring` encodes the stored value as `go-keyring-base64:<b64>` before writing.
-Claude Code reads the slot raw and expects plain JSON — the encoded form causes a
-JSON parse error and logs the user out. Confirmed by live test on 2026-06-16.
-
-### Keychain service names
-
-| Service string | Owner |
-|----------------|-------|
-| `Claude Code-credentials` | Claude Code (live active credential) |
-| `claudectx:<name>` | this tool (parked credential per context) |
-
-The `acct` field is always `os/user.Current().Username` (the macOS login name).
-
-### Keychain calls
-
-```bash
-# read
-security find-generic-password -s "<service>" -a "<acct>" -w
-
-# write (upsert)
-security add-generic-password -U -s "<service>" -a "<acct>" -w "<json>"
-
-# delete
-security delete-generic-password -s "<service>" -a "<acct>"
-```
-
-Wrap each in a helper that:
-- returns `(string, error)` for reads
-- returns `error` for writes/deletes
-- maps exit code 44 ("item not found") to a typed sentinel `ErrNotFound`
-
----
-
-## Credential blob schema (Claude Code's format, do not alter)
-
-```json
-{
-  "claudeAiOauth": {
-    "accessToken":      "<string, ~108 chars>",
-    "refreshToken":     "<string, ~108 chars>",
-    "expiresAt":        "<int64, unix ms>",
-    "scopes":           ["<string>", ...],
-    "subscriptionType": "<string>",
-    "rateLimitTier":    "<string>"
-  }
-}
-```
+**No Keychain library and no `/usr/bin/security` calls.** claudectx does not touch
+credentials at all — Claude Code owns them entirely. (This also sidesteps the
+go-keyring base64 corruption hazard from the old design, which no longer applies.)
 
 ---
 
@@ -83,112 +88,122 @@ Wrap each in a helper that:
 
 ```
 ~/.config/claudectx/
-  state.json                   0644
-  contexts/
-    <name>/
-      identity.json            0600
+  state.json                       0644   # last-used profile (for the no-arg picker default)
+  shared/                          0700   # one real copy, shared by ALL profiles
+    agents/      <name>.md
+    skills/      <name>/SKILL.md
+    commands/    <name>.md
+  profiles/
+    <name>/                        0700   # == CLAUDE_CONFIG_DIR for this profile
+      agents   -> ../../shared/agents      # symlink (dir), set at profile creation
+      skills   -> ../../shared/skills      # symlink (dir)
+      commands -> ../../shared/commands    # symlink (dir)
+      .claude.json                         # CC-owned, isolated (created on first run)
+      backups/  history.jsonl  projects/ … # CC-owned, isolated
 ```
 
-Directory permissions: `~/.config/claudectx/` and all `contexts/<name>/` → 0700.
+claudectx owns `state.json`, `shared/`, and the **symlinks** inside each profile dir.
+Everything else under `profiles/<name>/` is owned and written by Claude Code; claudectx
+never edits those files.
 
-No credential material on disk. Credentials live exclusively in Keychain
-(`claudectx:<name>` service).
+No credential material on disk — credentials live only in each profile's Keychain
+slot, managed by Claude Code.
 
 ### state.json schema
 
 ```json
 {
-  "active":    "<name or empty string>",
+  "lastUsed":  "<name or empty string>",
   "updatedAt": "<RFC3339>"
 }
 ```
 
-### identity.json schema
-
-Extracted from `~/.claude.json` at snapshot time. Only these two fields:
-
-```json
-{
-  "oauthAccount": { ...verbatim from ~/.claude.json... },
-  "userID":       "<string>"
-}
-```
+`lastUsed` is a convenience default for the interactive picker only. It is **not**
+authoritative "active" state — multiple profiles can be active simultaneously in
+different terminals, so there is no single global "active" profile.
 
 ---
 
-## `~/.claude.json` patching
+## The shared layer (agents / skills / commands)
 
-Only `oauthAccount` and `userID` are replaced. The rest of the file is preserved.
+These are discrete files Claude Code reads but never rewrites, so they can be shared
+safely by pointing each profile's `agents/`, `skills/`, `commands/` entries at the
+single `shared/` copy via **directory symlinks** created when the profile is made.
 
-Atomic write protocol:
-1. `json.Unmarshal` full `~/.claude.json` into `map[string]any`.
-2. Replace `oauthAccount` and `userID` keys.
-3. `json.Marshal` into a temp file created with `os.CreateTemp` in the same
-   directory as `~/.claude.json` (guarantees same filesystem → rename is atomic).
-4. `os.Rename(tmp, "~/.claude.json")`.
-
-Never write `~/.claude.json` directly. Never `json.Marshal` with indentation
-(Claude Code writes compact JSON; match the format).
+- One edit in `shared/` is visible to every profile immediately. No sync, no
+  per-switch materialization, no manifest, no deletion risk.
+- Claude Code follows these symlinks — confirmed live 2026-06-18: a probe agent in
+  `shared/agents/` appeared in a profile session's `/agents` through the symlinked
+  `agents/` directory (see **Resolved validations**).
+- Per-profile overrides (a profile that wants its *own* agent) are an explicit future
+  extension: replace that profile's `agents` symlink with a real dir, or layer a
+  per-profile dir ahead of the shared one. Out of scope for v1.
 
 ---
 
 ## `use` — switch algorithm (authoritative)
 
+`use` does **not** mutate any global state. It resolves the profile and execs Claude
+Code with the right environment.
+
 ```
-1. resolve <name> → load identity.json, verify claudectx:<name> keychain slot exists
-2. if <name> == state.active → print "already active", exit 0
-3. re-capture current active context:
-     a. read "Claude Code-credentials" slot
-     b. write to "claudectx:<state.active>" slot
-     c. patch identity.json for <state.active> from current ~/.claude.json
-   (skip step 3 entirely if state.active is empty)
-4. write claudectx:<name> credential → "Claude Code-credentials" slot
-5. patch ~/.claude.json with <name>'s identity.json content
-6. write state.json: active = <name>
-7. print confirmation
+1. resolve <name> → profiles/<name>/ must exist (else error: run `claudectx add`)
+2. ensure shared-layer symlinks exist in profiles/<name>/ (self-heal if missing)
+3. write state.json: lastUsed = <name>, updatedAt = now   (best-effort; non-fatal)
+4. exec:  env CLAUDE_CONFIG_DIR=<abs path to profiles/<name>>  claude  [args…]
+          via syscall.Exec so claudectx replaces itself with the claude process
 ```
 
-Steps 4–6 run sequentially. If step 4 fails, steps 5–6 are skipped and an error
-is returned. The tool never writes a partial state where the keychain and identity
-are mismatched.
+Any extra args after `use <name>` are forwarded to `claude` verbatim
+(`claudectx use work -- -p "summarize"` → `claude -p "summarize"`).
 
-Step 3 (re-capture) is unconditional and never skippable — this is the mechanism
-that survives refresh-token rotation.
+There is no partial-failure window: steps 1–3 are local and cheap, and step 4 is a
+single `exec`. If login is required (fresh profile or expired refresh token), Claude
+Code itself handles the OAuth flow inside that profile's own slot.
+
+### Shell-shim alternative
+
+For users who prefer typing plain `claude`, `claudectx` can install a shell function
+that exports `CLAUDE_CONFIG_DIR` for the current shell (`claudectx shell-init`,
+sourced from `~/.zshrc`). The launcher (`use`) is the default and primary path; the
+shim is opt-in. Both set the identical env var.
 
 ---
 
-## Token rotation
+## Planned commands
 
-Claude Code silently refreshes `accessToken` every ~8h using `refreshToken`,
-rewrites the live `Claude Code-credentials` slot with new values, and the
-`refreshToken` itself rotates (one-time-use).
-
-The step-3 re-capture in `use` handles this: the parked snapshot always gets the
-freshest tokens before being displaced.
-
-If tokens are not re-captured before switching, the parked context's stored
-`refreshToken` may be dead, causing a forced re-login on next `use`.
-
----
-
-## Corruption detection
-
-On any read of `Claude Code-credentials`, check if value starts with
-`go-keyring-base64:`. If so:
-- refuse the operation
-- print an error identifying the cause (go-keyring library wrote to the slot)
-- print recovery instruction: `claudectx restore <name>` or manual re-login
-
----
-
-## Running session detection
-
-Before patching `~/.claude.json` (step 5 of `use`), check:
-```go
-exec.Command("pgrep", "-x", "claude").Run() // exit 0 = process found
 ```
-If a `claude` process is running, print a warning. Do not block; proceed unless
-`--wait` flag is set (which polls until the process exits).
+claudectx                      interactive picker → use selected profile
+claudectx use <name> [args…]   exec claude in <name> (core command; forwards args)
+claudectx add <name>           create profiles/<name>/ + shared-layer symlinks
+claudectx remove <name>        delete a profile dir (prompts; never touches shared/)
+claudectx list                 list profiles, mark which have a credential slot
+claudectx current              print profile for $CLAUDE_CONFIG_DIR (or "default")
+claudectx rename <old> <new>   rename a profile dir + its Keychain slot follows*
+claudectx shared <cmd>         manage shared agents/skills/commands
+claudectx shell-init           print shell function for the env-var shim
+```
+
+\* **Rename caveat:** the Keychain slot name is `sha256(dir)`-derived, so renaming a
+profile dir changes its slot and would orphan the old credential → forces re-login in
+the renamed profile. `rename` must warn about this (or copy the slot, if we add the
+one credential operation we'd otherwise avoid). Tracked in **Open question 2**.
+
+---
+
+## `add` — create a profile
+
+```
+1. mkdir -p profiles/<name>/ (0700)
+2. ensure shared/{agents,skills,commands}/ exist (0700)
+3. create relative symlinks:
+     profiles/<name>/agents   -> ../../shared/agents
+     profiles/<name>/skills   -> ../../shared/skills
+     profiles/<name>/commands -> ../../shared/commands
+4. print next step: `claudectx use <name>` then log in (CC drives OAuth)
+```
+
+No credential or `.claude.json` work — Claude Code creates and owns those on first run.
 
 ---
 
@@ -196,26 +211,64 @@ If a `claude` process is running, print a warning. Do not block; proceed unless
 
 | State | Detection | Recovery |
 |-------|-----------|---------|
-| Context missing keychain slot | `ErrNotFound` on read | print `claudectx remove <name>` to clean orphaned identity.json |
-| Credential is go-keyring encoded | value prefix check | print repair instructions |
-| `~/.claude.json` unreadable/unparseable | `json.Unmarshal` error | abort, do not patch |
-| Partial `use` failure (step 4 fails) | `error` from write | print what succeeded, print `claudectx use <previous>` recovery command |
-| `state.active` points to non-existent context | missing identity.json | warn, set active to empty, continue with `use` |
+| `use <name>` but profile dir missing | stat `profiles/<name>` | error → `claudectx add <name>` |
+| Shared-layer symlink missing/broken | readlink check in `use` | self-heal: recreate symlink, continue |
+| `shared/` accidentally deleted | stat in `use`/`add` | recreate empty `shared/` dirs, warn |
+| Profile never logged in | CC reports unauthenticated at launch | normal — CC drives the OAuth flow |
+| Renamed profile forces re-login | slot name is dir-derived | warn on `rename` (see Open question 2) |
+| `claude` not on PATH | `exec.LookPath("claude")` fails | error with install hint |
 
 ---
 
-## Open questions
+## Resolved validations (2026-06-18)
 
-1. **Refresh token rotation frequency** — does `refreshToken` rotate on every
-   `accessToken` refresh, or is it stable? Observed stable across one test session
-   (2026-06-16). Confirm over 24h before v1 release. Affects how critical the
-   re-capture step is if a user force-switches without it.
+Confirmed live on CC v2.1.179 by logging a real account into a `personal` profile
+while the default-dir session stayed active:
 
-2. **Keychain ACL after code signing** — unsigned binary had zero prompts in
-   testing. Re-test after signing; a signed binary may trigger a "Do you want to
-   allow access?" dialog on first use. If so, evaluate whether a one-time
-   `security unlock-keychain` or entitlement resolves it.
+- ✅ **Credential isolation.** The profile session required a fresh login and wrote a
+  new Keychain slot; the default `Claude Code-credentials` was untouched. Isolation
+  is real, not just structural.
+- ✅ **Slot-name formula.** The created slot was `Claude Code-credentials-2decd513`,
+  matching `sha256(absProfileDir)[:8]` byte-for-byte (predicted == observed). The
+  `SlotName()` implementation and the `list` "logged in" marker are correct.
+- ✅ **Directory-level shared layer.** A probe agent dropped in `shared/agents/`
+  appeared in the profile session's `/agents` list through the symlinked `agents/`
+  *directory* — confirming CC honors dir-level symlinks for the shared layer.
 
-3. **`~/.claude.json` write race** — CC can rewrite this file at any time (token
-   refresh, settings change). The atomic rename handles most races. Evaluate
-   whether a `flock`-style advisory lock is needed for the read-modify-write cycle.
+## Open questions before v1 ship
+
+1. **Switch-back / rotation persistence.** Confirm that leaving and returning to a
+   profile — and crossing an ~8h token refresh — does NOT force a re-login. Expected
+   to hold (each profile owns its slot; CC rotates in place), but not yet observed
+   over time.
+
+2. **Rename / credential portability.** ✅ **Decided: (a) warn + accept re-login.**
+   Since the slot is `sha256(dir)`-derived, renaming a profile dir orphans its
+   credential. Option (b) — copying the slot via `security` — was rejected: it would
+   be the *only* place claudectx touches credentials, breaking the "Claude Code owns
+   all credentials" invariant for a rare operation. `rename` warns; the user logs in
+   once more in the renamed profile.
+
+3. **`~/.claude.json` location & shared bits.** Confirm exactly what lives in
+   `$CLAUDE_CONFIG_DIR/.claude.json` vs. elsewhere, and whether anything users expect
+   to be shared (e.g. global settings.json) needs its own symlink in the shared layer.
+
+---
+
+## Appendix A — why the original single-slot design was dropped
+
+The first architecture assumed Claude Code had exactly **one** global credential slot
+(`Claude Code-credentials`) and one global `~/.claude.json`, so switching required:
+
+- parking inactive accounts under `claudectx:<name>` Keychain entries,
+- copying to/from the single live slot on every switch,
+- a "re-capture before switch" invariant to survive ~8h token rotation,
+- surgically patching `oauthAccount`/`userID` into the shared `~/.claude.json`,
+- guarding against `go-keyring` base64 corruption of the raw slot.
+
+The 2026-06-17 discovery that **`CLAUDE_CONFIG_DIR` namespaces both the config tree
+and the Keychain slot** removes the shared-resource contention those mechanisms
+existed to manage. With one config dir per profile, Claude Code itself keeps each
+account's credentials and state separate, and claudectx never needs to touch
+credentials. The old approach is retained here only as rationale; it is not the
+implementation.

@@ -157,7 +157,7 @@ func Remove(name string) error {
 // Rename moves a profile directory. The shared-layer symlinks are relative
 // (../../shared/...) so they survive the move. NOTE: the Keychain credential slot
 // is derived from the directory path, so a rename orphans the old credential and
-// forces a re-login (see architecture.md Open Question 3).
+// forces a re-login (see architecture.md Open Question 2).
 func Rename(oldName, newName string) error {
 	if err := ValidateName(oldName); err != nil {
 		return err
@@ -187,11 +187,10 @@ func Rename(oldName, newName string) error {
 
 // SlotName returns the Keychain service name Claude Code uses for a profile.
 //
-// Best-effort: derived from the decompiled CC resolver as
-// "Claude Code-credentials-" + sha256(NFC(absDir))[:8]. The exact path
-// normalization CC applies is unconfirmed (architecture.md Open Question 1); NFC of
-// an ASCII path is the identity, and profile dirs are ASCII, so this matches for
-// the common case. Used only for the "logged in" marker in `list`.
+// Slot name is "Claude Code-credentials-" + sha256(absDir)[:8]. Confirmed live
+// 2026-06-18: a real login produced exactly the predicted slot (see architecture.md
+// Resolved validations). NFC normalization is a no-op for the ASCII profile dirs we
+// create. Used for the "logged in" marker in `list`.
 func SlotName(name string) (string, error) {
 	pdir, err := paths.ProfileDir(name)
 	if err != nil {

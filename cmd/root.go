@@ -13,12 +13,16 @@ import (
 	"github.com/rneumann/claudectx/internal/store"
 )
 
+// version is overridden at release time via -ldflags -X.
+var version = "dev"
+
 var rootCmd = &cobra.Command{
 	Use:   "claudectx",
 	Short: "Switch between isolated Claude Code profiles",
 	Long: "claudectx manages multiple isolated Claude Code profiles (one per account)\n" +
 		"and launches `claude` into the chosen one via CLAUDE_CONFIG_DIR.\n\n" +
 		"With no arguments it opens an interactive picker.",
+	Version:       version,
 	Args:          cobra.NoArgs,
 	RunE:          func(cmd *cobra.Command, args []string) error { return runPicker() },
 	SilenceUsage:  true,
