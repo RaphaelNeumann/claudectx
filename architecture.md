@@ -167,17 +167,19 @@ Bare `claudectx` launches the **current profile** rather than always prompting. 
 current profile is resolved in priority order:
 
 ```
-1. CLAUDECTX_PROFILE env var   → transient override; launch it, do NOT persist
+1. --profile <name> flag       → transient override; launch it, do NOT persist
                                   (error if the named profile does not exist)
-2. state.json lastUsed         → the saved default; launch it directly
-3. interactive picker          → only when nothing is saved (first run);
+2. CLAUDECTX_PROFILE env var    → same transient override, via the environment
+3. state.json lastUsed          → the saved default; launch it directly
+4. interactive picker           → only when nothing is saved (first run);
                                   the choice is persisted, then launched
 ```
 
 `use <name>` and `pick` both **persist** the choice (write `lastUsed`); the
-`CLAUDECTX_PROFILE` override deliberately does not, so it stays a one-shot. This
-keeps `state.json` as a convenience default only — it is still not authoritative
-"active" state (multiple profiles can run at once in different shells).
+`--profile` flag and `CLAUDECTX_PROFILE` overrides deliberately do not, so they stay
+one-shot (flag outranks env). This keeps `state.json` as a convenience default only
+— it is still not authoritative "active" state (multiple profiles can run at once in
+different shells).
 
 ### Shell-shim alternative
 

@@ -129,10 +129,10 @@ claudectx shared <cmd>          manage shared agents/skills/commands
 claudectx shell-init            print shell function for the env-var shim
 ```
 
-Current-profile persistence: bare `claudectx` resolves `CLAUDECTX_PROFILE` (one-shot
-override) → saved `lastUsed` → picker (first run only). `use`/`pick` persist; the
-env override does not. (No `refresh` command — token rotation is handled by Claude
-Code inside each profile's own slot.)
+Current-profile persistence: bare `claudectx` resolves `--profile` flag → `CLAUDECTX_PROFILE`
+env (both one-shot overrides) → saved `lastUsed` → picker (first run only).
+`use`/`pick` persist; the flag/env overrides do not. (No `refresh` command — token
+rotation is handled by Claude Code inside each profile's own slot.)
 
 ---
 

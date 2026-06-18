@@ -32,6 +32,14 @@ env CLAUDECTX_PROFILE=
 exec claudectx
 stdout 'profiles/personal'
 
+# The --profile flag is a one-shot override too, and outranks the env var.
+exec claudectx --profile work
+stdout 'profiles/work'
+exec claudectx
+stdout 'profiles/personal'
+! exec claudectx --profile ghost
+stderr 'does not exist'
+
 # A non-existent override errors clearly.
 env CLAUDECTX_PROFILE=ghost
 ! exec claudectx

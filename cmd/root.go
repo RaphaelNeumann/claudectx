@@ -26,15 +26,22 @@ var rootCmd = &cobra.Command{
 	Short: "Switch between isolated Claude Code profiles",
 	Long: "claudectx manages multiple isolated Claude Code profiles (one per account)\n" +
 		"and launches `claude` into the chosen one via CLAUDE_CONFIG_DIR.\n\n" +
-		"With no arguments it launches the current profile:\n" +
-		"  CLAUDECTX_PROFILE (override) → saved current → interactive picker (first run).\n" +
-		"Use `claudectx use <name>` to change the current profile, or `claudectx pick`\n" +
+		"With no arguments it launches the current profile, resolved in order:\n" +
+		"  --profile flag → CLAUDECTX_PROFILE env → saved current → picker (first run).\n" +
+		"Use `claudectx use <name>` to change the saved current, or `claudectx pick`\n" +
 		"to choose interactively.",
-	Version:       version,
-	Args:          cobra.NoArgs,
-	RunE:          func(cmd *cobra.Command, args []string) error { return runRoot() },
+	Version: version,
+	Args:    cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, _ := cmd.Flags().GetString("profile")
+		return runRoot(p)
+	},
 	SilenceUsage:  true,
 	SilenceErrors: true,
+}
+
+func init() {
+	rootCmd.Flags().String("profile", "", "launch this profile for one invocation (overrides the saved default)")
 }
 
 // resolveCurrent returns the profile that bare `claudectx` would launch and its
@@ -50,8 +57,15 @@ func resolveCurrent() (name, source string) {
 }
 
 // runRoot handles the no-argument invocation: launch the current profile, or fall
-// back to the picker on first run.
-func runRoot() error {
+// back to the picker on first run. flagProfile is the --profile value (one-shot
+// override; highest precedence, does not persist).
+func runRoot(flagProfile string) error {
+	if p := strings.TrimSpace(flagProfile); p != "" {
+		if !profile.Exists(p) {
+			return fmt.Errorf("--profile %q: profile does not exist (run `claudectx add %s`)", p, p)
+		}
+		return launch.Exec(p, nil)
+	}
 	name, source := resolveCurrent()
 	switch source {
 	case "env":

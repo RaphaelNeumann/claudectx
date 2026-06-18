@@ -59,12 +59,16 @@ claudectx shared list         # what's in the shared agents/skills/commands
 `claudectx` remembers your current profile, so calling it with no arguments goes
 straight there — no menu. The current profile is resolved in this order:
 
-1. **`CLAUDECTX_PROFILE`** env var — a one-shot override (does *not* change the saved default):
+1. **`--profile <name>`** flag — a one-shot override (does *not* change the saved default):
+   ```sh
+   claudectx --profile work                # launch work this once
+   ```
+2. **`CLAUDECTX_PROFILE`** env var — same one-shot override, via the environment:
    ```sh
    CLAUDECTX_PROFILE=work claudectx        # launch work this once
    ```
-2. **Saved default** — set by `claudectx use <name>` or `claudectx pick`.
-3. **Interactive picker** — only on first run, when nothing is saved yet.
+3. **Saved default** — set by `claudectx use <name>` or `claudectx pick`.
+4. **Interactive picker** — only on first run, when nothing is saved yet.
 
 Because profiles are per-process, you can also run **two accounts at once** in two
 terminals.
