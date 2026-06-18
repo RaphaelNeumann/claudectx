@@ -5,8 +5,9 @@ import (
 )
 
 var pickCmd = &cobra.Command{
-	Use:   "pick",
-	Short: "Interactively choose the current profile and launch it",
+	Use:     "pick",
+	Aliases: []string{"switch"},
+	Short:   "Interactively choose the current profile and launch it",
 	Long: "Opens the interactive picker, saves the choice as the current profile, and\n" +
 		"launches claude in it. Bare `claudectx` then goes straight to that profile.",
 	Args: cobra.NoArgs,
