@@ -255,6 +255,47 @@ while the default-dir session stayed active:
 
 ---
 
+## Platform support (current: macOS only; Linux & Windows = future)
+
+v1 targets **macOS only**. Linux and Windows are deferred but feasible — the core
+`CLAUDE_CONFIG_DIR` isolation is platform-agnostic; only credential detection, the
+launcher, and the shared-layer symlinks have platform-specific concerns. Findings
+below are from the CC v2.1.179 binary (same JS bundle ships on all platforms).
+
+| Concern | macOS | Linux | Windows |
+|---------|-------|-------|---------|
+| Config-tree isolation (`CLAUDE_CONFIG_DIR`) | ✅ confirmed | ✅ same mechanism | ✅ same mechanism |
+| Credential isolation | ✅ per-dir Keychain slot | ✅ `.credentials.json` lives **inside** the config dir → free, simpler than macOS | ⚠️ binary shows `DPAPI` / `Credential Manager`; unconfirmed whether per-dir |
+| Launcher (`use`) | `syscall.Exec` | `syscall.Exec` works | ❌ `syscall.Exec` is a runtime stub (`EWINDOWS`) → needs spawn-and-wait |
+| Shared-layer symlinks | ✅ | ✅ native | ⚠️ symlinks need admin/Dev-Mode → use junctions (`mklink /J`) or copy |
+| `HasCredential` marker | `/usr/bin/security` | check `<profileDir>/.credentials.json` | check the Windows cred store / file |
+
+Key discovery: CC has a file credential store at `Xn()/.credentials.json`, where
+`Xn()` follows `CLAUDE_CONFIG_DIR` (unless `CLAUDE_SECURESTORAGE_CONFIG_DIR` is set).
+No libsecret/gnome-keyring/secret-tool references exist in the binary, so Linux
+almost certainly uses the plaintext `.credentials.json` file in the config dir.
+
+### Linux plan (cheap — mostly done already)
+- `syscall.Exec` and native symlinks already work; the binary cross-compiles today.
+- Make `HasCredential` platform-aware (build-tagged `credential_darwin.go` /
+  `credential_other.go`): on Linux, test for `<profileDir>/.credentials.json`.
+- Add `linux/amd64` + `linux/arm64` to `.goreleaser.yaml`.
+- Doc note: on Linux the credential is **plaintext on disk** (CC's own design —
+  no guaranteed keyring), unlike the macOS Keychain.
+
+### Windows plan (more work + unknowns)
+- Launcher: `launch_windows.go` that spawns `claude`, inherits stdio, waits, and
+  propagates the exit code (no `exec`).
+- Shared layer: directory junctions (no privilege) or copy-on-create instead of
+  symlinks.
+- Config paths: use `os.UserConfigDir()` semantics; confirm CC's Windows config dir.
+- **Open unknown:** confirm with a live test whether the Windows credential store
+  (DPAPI / Credential Manager) isolates per `CLAUDE_CONFIG_DIR`. If it uses one
+  global, fixed-named entry, isolation breaks and we fall back to
+  `CLAUDE_SECURESTORAGE_CONFIG_DIR` per profile.
+
+---
+
 ## Appendix A — why the original single-slot design was dropped
 
 The first architecture assumed Claude Code had exactly **one** global credential slot

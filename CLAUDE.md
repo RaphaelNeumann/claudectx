@@ -200,4 +200,10 @@ shared slot and claudectx no longer writes `~/.claude.json`.)
    the release pipeline (goreleaser not installed here yet).
 3. Resolve Open question 3 (`$CLAUDE_CONFIG_DIR/.claude.json` contents & whether any
    global bits need sharing).
-4. Init git, first commit, push, tag for the first goreleaser release.
+4. Push to GitHub (`raphaelneumann/claudectx`) and tag the first goreleaser release.
+
+**Future (deferred):** Linux & Windows support — v1 is macOS-only. Plan + binary
+findings captured in `architecture.md` ("Platform support"). Linux is cheap (CC
+stores `.credentials.json` inside the config dir; `syscall.Exec` + symlinks already
+work); Windows needs a spawn-based launcher, junctions/copy for the shared layer,
+and a live test of credential isolation.
