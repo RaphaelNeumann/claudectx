@@ -1,0 +1,29 @@
+# completion generation + install
+[windows] skip
+
+# generate to stdout
+exec claudectx completion zsh
+stdout '#compdef claudectx'
+
+exec claudectx completion bash
+stdout 'claudectx'
+
+# install via the --install flag
+exec claudectx completion zsh --install --dir $WORK/zflag
+exists $WORK/zflag/_claudectx
+stdout 'installed zsh completion'
+
+# install via the subcommand
+exec claudectx completion install zsh --dir $WORK/zfunc
+exists $WORK/zfunc/_claudectx
+stdout 'installed zsh completion'
+
+exec claudectx completion install fish --dir $WORK/fishcomp
+exists $WORK/fishcomp/claudectx.fish
+
+exec claudectx completion install bash --dir $WORK/bashcomp
+exists $WORK/bashcomp/claudectx
+
+# unsupported shell errors
+! exec claudectx completion install tcsh
+stderr 'unsupported shell'

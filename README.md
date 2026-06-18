@@ -82,6 +82,17 @@ eval "$(claudectx shell-init)"   # in ~/.zshrc
 claudectx-use work
 ```
 
+### Shell completion
+
+```sh
+claudectx completion install         # install for your current shell ($SHELL)
+claudectx completion zsh --install   # ...or target a specific shell
+claudectx completion zsh             # or just print the script to stdout
+```
+
+Supports bash, zsh, and fish (`--dir` overrides the install location). The command
+prints any follow-up step needed to activate it.
+
 ## Layout
 
 ```
