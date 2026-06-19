@@ -2,6 +2,11 @@ version: 2
 
 project_name: claudectx
 
+# Make HOMEBREW_TAP_GITHUB_TOKEN always defined (empty when not provided), so the
+# cask token/skip_upload templates below can reference it safely.
+env:
+  - HOMEBREW_TAP_GITHUB_TOKEN={{ index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}
+
 before:
   hooks:
     - go mod tidy
@@ -49,10 +54,10 @@ homebrew_casks:
     repository:
       owner: RaphaelNeumann
       name: homebrew-tap
-      token: '{{ envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "" }}'
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     # Skip publishing the cask unless a tap token is configured, so the core
     # release (binaries + checksums) succeeds even before the tap repo exists.
-    skip_upload: '{{ eq (envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "") "" }}'
+    skip_upload: '{{ eq .Env.HOMEBREW_TAP_GITHUB_TOKEN "" }}'
     homepage: "https://github.com/RaphaelNeumann/claudectx"
     description: "Switch between multiple Claude Code accounts"
 
