@@ -29,10 +29,10 @@ Installs the latest release to `~/.local/bin`. Override the location with
 ### Homebrew
 
 ```sh
-brew tap raphaelneumann/tap
-brew trust raphaelneumann/tap          # one-time: third-party casks require trust
-brew install --cask claudectx
+brew install --cask raphaelneumann/tap/claudectx
 ```
+
+(If Homebrew asks you to trust the tap, run `brew trust raphaelneumann/tap` once, then re-run.)
 
 ### From source
 
