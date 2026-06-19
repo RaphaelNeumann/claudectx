@@ -106,10 +106,29 @@ prints any follow-up step needed to activate it.
     .claude.json, history, ...        # isolated, owned by Claude Code
 ```
 
+## Releases
+
+Releases are automated from `main` and versioned by
+[Conventional Commits](https://www.conventionalcommits.org):
+
+- CI (`go vet` + `go test` + `gofmt`) runs on PRs and branch pushes.
+- On push to `main`, the release workflow runs the tests, derives the next semantic
+  version from the commit messages, tags it, and publishes a GitHub release with
+  cross-platform binaries + checksums via GoReleaser.
+
+Commit types and their effect: `feat:` → minor, `fix:` → patch, `feat!:` / a
+`BREAKING CHANGE:` footer → major. Other types (`docs:`, `chore:`, `ci:`, `refactor:`,
+`test:`) ship no release. So a push with no `feat:`/`fix:` since the last tag is a
+no-op for releases.
+
+Homebrew is optional: add a `RaphaelNeumann/homebrew-tap` repo and a
+`HOMEBREW_TAP_GITHUB_TOKEN` repo secret (a PAT with `contents:write` on the tap) to
+have each release publish a cask.
+
 ## Status
 
 Scaffolded, building, and the core model is **validated live** (2026-06-18):
 per-profile credential isolation, the exact per-dir Keychain slot name, and
-directory-level symlinks for the shared layer all confirmed. Remaining before v1:
-`rename` credential behavior, a day-2 token-rotation persistence check, and release
-packaging (see `architecture.md`).
+directory-level symlinks for the shared layer all confirmed. CI + automated
+semantic-version releases (GoReleaser) are wired up; the first tagged release lands
+on the first `feat:`/`fix:` commit to `main`.

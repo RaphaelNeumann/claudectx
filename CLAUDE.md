@@ -201,14 +201,21 @@ shared slot and claudectx no longer writes `~/.claude.json`.)
   `-ldflags -X .../cmd.version`, and testscript CLI integration tests in
   `cmd/testdata/script/` (basics + launch). All green; gofmt clean.
 
+**CI/release (added 2026-06-18):** `.github/workflows/ci.yml` (PRs + branch pushes:
+gofmt/vet/test/build) and `release.yml` (push to main: test → derive semver from
+Conventional Commits via `mathieudutour/github-tag-action` → tag → GoReleaser
+release). `.goreleaser.yaml` uses `homebrew_casks` (skipped unless
+`HOMEBREW_TAP_GITHUB_TOKEN` secret is set). Validated locally: `goreleaser check` +
+full `release --snapshot` produce the darwin amd64/arm64 archives + checksums. First
+release fires on the first `feat:`/`fix:` commit to main (→ v0.1.0 for `feat:`).
+
 **Next:**
 1. Day-2 persistence test (Open question 1): switch away/back + cross an ~8h token
    refresh without a forced re-login. (Only confirmable over time.)
-2. `brew install goreleaser`, then `make release-check` / `make snapshot` to verify
-   the release pipeline (goreleaser not installed here yet).
-3. Resolve Open question 3 (`$CLAUDE_CONFIG_DIR/.claude.json` contents & whether any
+2. Resolve Open question 3 (`$CLAUDE_CONFIG_DIR/.claude.json` contents & whether any
    global bits need sharing).
-4. Push to GitHub (`raphaelneumann/claudectx`) and tag the first goreleaser release.
+3. To enable the Homebrew cask: create `RaphaelNeumann/homebrew-tap` + add the
+   `HOMEBREW_TAP_GITHUB_TOKEN` secret.
 
 **Future (deferred):** Linux & Windows support — v1 is macOS-only. Plan + binary
 findings captured in `architecture.md` ("Platform support"). Linux is cheap (CC
