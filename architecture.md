@@ -141,6 +141,31 @@ single `shared/` copy via **directory symlinks** created when the profile is mad
 
 ---
 
+## Per-profile environment (`claudectx.env`)
+
+Some accounts need extra environment beyond `CLAUDE_CONFIG_DIR` — e.g. a work profile
+that reaches Claude through **Google Vertex AI** (`CLAUDE_CODE_USE_VERTEX=1`,
+`CLOUD_ML_REGION`, `ANTHROPIC_VERTEX_PROJECT_ID`, …). Each profile may carry a single
+dotenv file `profiles/<name>/claudectx.env` (claudectx-owned; Claude Code never reads
+it). At launch claudectx loads it into the **claude process only** — not the user's
+shell, so nothing leaks across terminals and there is no unset bookkeeping.
+
+- **Format:** `KEY=VALUE` per line; blank lines and `#` comments ignored; an optional
+  leading `export ` is stripped; matching surrounding quotes are removed; a later line
+  overrides an earlier same key. Applied *before* `CLAUDE_CONFIG_DIR`, which is set
+  last so it always wins.
+- **Both launch paths apply it.** `claudectx use <name>` (→ `launch.Exec`) and the
+  shell `claude` wrapper, which resolves the dir then calls the hidden
+  `claudectx _exec-claude <dir> …` (→ `launch.ExecDir`) so env loads identically.
+- **UX:** `claudectx envs [name]` shows the vars; `claudectx envs [name] --edit` opens
+  the file in `$VISUAL`/`$EDITOR` (seeding a commented template on first edit). With no
+  name, the active profile is used (this terminal's `CLAUDE_CONFIG_DIR`, else default).
+- Generalizes for free to Bedrock (`CLAUDE_CODE_USE_BEDROCK` + `AWS_PROFILE`) and
+  `ANTHROPIC_BASE_URL` proxies. (Isolating provider-side credentials — e.g. a separate
+  gcloud/ADC home — is the user's responsibility and out of scope for claudectx.)
+
+---
+
 ## `use` — switch algorithm (authoritative)
 
 `use` does **not** mutate any global state. It resolves the profile and execs Claude
@@ -293,9 +318,27 @@ while the default-dir session stayed active:
    all credentials" invariant for a rare operation. `rename` warns; the user logs in
    once more in the renamed profile.
 
-3. **`~/.claude.json` location & shared bits.** Confirm exactly what lives in
-   `$CLAUDE_CONFIG_DIR/.claude.json` vs. elsewhere, and whether anything users expect
-   to be shared (e.g. global settings.json) needs its own symlink in the shared layer.
+3. **`~/.claude.json` location & shared bits.** ✅ **Resolved (2026-06-19): keep the
+   whole tree isolated; do not share `settings.json`.** Audited the live default dir
+   and both real profiles.
+   - **`.claude.json` is fully isolated** at `$CLAUDE_CONFIG_DIR/.claude.json`, and
+     every top-level key belongs per-profile: identity (`oauthAccount`, `userID`),
+     machine/install state (`machineID`, `installMethod`, `firstStartTime`,
+     `numStartups`, `autoUpdates*`), feature/growthbook caches (`cached*`,
+     `*MigrationComplete`, `*Cache`), onboarding/UX state (`hasCompletedOnboarding`,
+     `tipsHistory`, `seenNotifications`, …), and path-keyed `projects` state. None of
+     it is something a user would want shared — "isolate the whole tree" is correct.
+   - **`settings.json` stays per-profile (NOT symlinked into the shared layer).** Two
+     reasons: (1) `model` is legitimately profile-specific (e.g. personal `opus[1m]`
+     vs. a work account on a different tier), and (2) CC mutates `settings.json` at
+     runtime via `/model`, `/config`, and theme toggles — a symlink would silently
+     leak one profile's change into all profiles, the mutable-shared-file hazard the
+     shared layer deliberately avoids (it is limited to *static* agents/skills/
+     commands). Escape hatch for power users who do want it shared: `EnsureSymlinks`
+     treats a real (non-symlink) entry as an intentional override, so a hand-made
+     `settings.json -> ../../shared/settings.json` symlink survives untouched. Seeding
+     new profiles from a `shared/settings.json` template at `add` time was considered
+     and deferred (no demand yet; copy-on-create would be the safe form, not a link).
 
 ---
 

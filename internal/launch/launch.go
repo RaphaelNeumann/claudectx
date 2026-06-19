@@ -32,11 +32,30 @@ func Exec(name string, args []string) error {
 	if err != nil {
 		return err
 	}
+	return ExecDir(abs, args)
+}
+
+// ExecDir replaces the current process with `claude`, with CLAUDE_CONFIG_DIR pointed
+// at an already-resolved absolute config dir and that profile's claudectx.env loaded
+// into the environment. Used by the shell `claude` wrapper, which resolves the dir
+// itself. The profile env is applied first so its values are visible to claude, then
+// CLAUDE_CONFIG_DIR is set last so it always wins. On success it does not return.
+func ExecDir(abs string, args []string) error {
 	bin, err := exec.LookPath("claude")
 	if err != nil {
 		return fmt.Errorf("`claude` not found on PATH: %w", err)
 	}
-	env := setEnv(os.Environ(), "CLAUDE_CONFIG_DIR", abs)
+	env := os.Environ()
+	profEnv, err := profile.LoadEnv(abs)
+	if err != nil {
+		return fmt.Errorf("loading profile env: %w", err)
+	}
+	for _, kv := range profEnv {
+		if i := strings.IndexByte(kv, '='); i > 0 {
+			env = setEnv(env, kv[:i], kv[i+1:])
+		}
+	}
+	env = setEnv(env, "CLAUDE_CONFIG_DIR", abs)
 	argv := append([]string{"claude"}, args...)
 	return syscall.Exec(bin, argv, env)
 }
