@@ -3,6 +3,7 @@ package profile
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/raphaelneumann/claudectx/internal/paths"
@@ -131,6 +132,51 @@ func TestEnsureSymlinksSelfHeals(t *testing.T) {
 	}
 	if _, err := os.Lstat(link); err != nil {
 		t.Errorf("symlink not recreated: %v", err)
+	}
+}
+
+func TestAddSeedsClaudeMD(t *testing.T) {
+	root := sandbox(t)
+
+	if err := Add("demo"); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	mdPath := filepath.Join(root, "profiles", "demo", "CLAUDE.md")
+	data, err := os.ReadFile(mdPath)
+	if err != nil {
+		t.Fatalf("CLAUDE.md not created: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "demo") {
+		t.Error("CLAUDE.md does not contain the profile name")
+	}
+	if !strings.Contains(content, "settings.json") {
+		t.Error("CLAUDE.md does not contain the settings warning")
+	}
+}
+
+func TestSeedClaudeMDDoesNotOverwrite(t *testing.T) {
+	root := sandbox(t)
+
+	if err := Add("keep"); err != nil {
+		t.Fatal(err)
+	}
+	mdPath := filepath.Join(root, "profiles", "keep", "CLAUDE.md")
+	custom := []byte("my custom instructions")
+	if err := os.WriteFile(mdPath, custom, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// EnsureSymlinks also calls seedClaudeMD — must not overwrite.
+	if err := EnsureSymlinks("keep"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(mdPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(custom) {
+		t.Error("seedClaudeMD overwrote existing CLAUDE.md")
 	}
 }
 
