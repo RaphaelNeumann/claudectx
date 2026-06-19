@@ -51,6 +51,14 @@ homebrew_casks:
   - name: claudectx
     binaries:
       - claudectx
+    # Remove the Gatekeeper quarantine xattr so the unsigned binary runs after
+    # `brew install` without a "developer cannot be verified" prompt.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/claudectx"]
+          end
     repository:
       owner: RaphaelNeumann
       name: homebrew-tap

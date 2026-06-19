@@ -26,6 +26,14 @@ Installs the latest release to `~/.local/bin`. Override the location with
 `BINDIR=/usr/local/bin`, or pin a version with `VERSION=v0.1.0`. macOS only for now
 (Apple Silicon or Intel).
 
+### Homebrew
+
+```sh
+brew tap raphaelneumann/tap
+brew trust raphaelneumann/tap          # one-time: third-party casks require trust
+brew install --cask claudectx
+```
+
 ### From source
 
 ```sh
