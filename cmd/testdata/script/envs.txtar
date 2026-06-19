@@ -1,0 +1,44 @@
+# `claudectx envs` shows a profile's env vars; `--edit` opens the file in $EDITOR.
+[windows] skip
+
+exec claudectx add work
+
+# No env file yet → friendly empty message + hint.
+exec claudectx envs work
+stdout 'no environment variables'
+stdout 'envs work --edit'
+
+# Drop an env file and show it.
+cp envfile $XDG_CONFIG_HOME/claudectx/profiles/work/claudectx.env
+exec claudectx envs work
+stdout 'CLAUDE_CODE_USE_VERTEX=1'
+stdout 'CLOUD_ML_REGION=us-east5'
+# Comments and blank lines are not shown.
+! stdout '#'
+
+# Unknown profile errors.
+! exec claudectx envs nope
+stderr 'does not exist'
+
+# --edit runs $EDITOR on the file; here EDITOR appends a line non-interactively.
+chmod 0777 bin/fakeeditor
+env EDITOR=$WORK/bin/fakeeditor
+exec claudectx envs work --edit
+stdout '3 environment variable'
+exec claudectx envs work
+stdout 'ADDED_BY_EDITOR=yes'
+
+# --edit on a profile with no file seeds a commented template, then edits it.
+exec claudectx add fresh
+exec claudectx envs fresh --edit
+exists $XDG_CONFIG_HOME/claudectx/profiles/fresh/claudectx.env
+grep 'Google Vertex AI' $XDG_CONFIG_HOME/claudectx/profiles/fresh/claudectx.env
+
+-- envfile --
+# work account
+CLAUDE_CODE_USE_VERTEX=1
+
+CLOUD_ML_REGION=us-east5
+-- bin/fakeeditor --
+#!/bin/sh
+echo 'ADDED_BY_EDITOR=yes' >> "$1"

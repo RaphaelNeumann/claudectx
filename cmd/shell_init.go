@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/raphaelneumann/claudectx/internal/launch"
 	"github.com/raphaelneumann/claudectx/internal/paths"
 	"github.com/raphaelneumann/claudectx/internal/profile"
 )
@@ -17,12 +18,15 @@ const shellInitScript = `# claudectx shell integration.
 #
 # Wraps ` + "`claude`" + ` so it runs in this terminal's profile (or the default).
 claude() {
-  if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
+  _claudectx_dir="${CLAUDE_CONFIG_DIR:-}"
+  if [ -z "$_claudectx_dir" ]; then
     _claudectx_dir="$(command claudectx _current-dir 2>/dev/null)"
-    if [ -n "$_claudectx_dir" ]; then
-      CLAUDE_CONFIG_DIR="$_claudectx_dir" command claude "$@"
-      return $?
-    fi
+  fi
+  if [ -n "$_claudectx_dir" ]; then
+    # Run claude in the profile dir with that profile's claudectx.env applied
+    # (env vars are applied to the claude process only, not this shell).
+    command claudectx _exec-claude "$_claudectx_dir" "$@"
+    return $?
   fi
   command claude "$@"
 }
@@ -44,7 +48,7 @@ claudectx() {
       unset CLAUDE_CONFIG_DIR
       echo "claudectx: this terminal now follows the default profile."
       ;;
-    add | remove | rm | rename | list | ls | use | set | current | add-* | shared | shell-init | completion | help | version | -*)
+    add | remove | rm | rename | list | ls | use | set | envs | current | add-* | shared | shell-init | completion | help | version | -*)
       command claudectx "$@"
       ;;
     *)
@@ -203,8 +207,23 @@ var profileDirCmd = &cobra.Command{
 	},
 }
 
+// execClaudeCmd is the hidden helper the `claude` shell wrapper calls: it execs
+// claude in an already-resolved config dir with that profile's claudectx.env loaded.
+// Flag parsing is disabled so claude's own flags (e.g. --resume) pass through verbatim.
+var execClaudeCmd = &cobra.Command{
+	Use:                "_exec-claude <dir> [claude-args...]",
+	Hidden:             true,
+	DisableFlagParsing: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 1 {
+			return fmt.Errorf("_exec-claude requires a config dir")
+		}
+		return launch.ExecDir(args[0], args[1:])
+	},
+}
+
 func init() {
 	shellInitCmd.Flags().BoolVar(&shellInitDoInstall, "install", false, "append the integration to your shell rc instead of printing it")
 	shellInitCmd.Flags().StringVar(&shellInitRC, "rc", "", "rc file to install into (default: ~/.zshrc or ~/.bashrc from $SHELL)")
-	rootCmd.AddCommand(shellInitCmd, profileDirCmd, currentDirCmd, pickDirCmd)
+	rootCmd.AddCommand(shellInitCmd, profileDirCmd, currentDirCmd, pickDirCmd, execClaudeCmd)
 }

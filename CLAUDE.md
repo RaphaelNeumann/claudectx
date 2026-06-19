@@ -128,6 +128,8 @@ claudectx remove <name>         delete a profile dir (never touches shared/)
 claudectx list                  list profiles, mark which have a credential slot
 claudectx current               print the default + this terminal's profile
 claudectx rename <old> <new>    rename a profile (warns: slot is dir-derived → re-login)
+claudectx envs [name]           show the profile's env vars (loaded into claude)
+claudectx envs [name] --edit    edit the profile's env file in $EDITOR
 claudectx shared <cmd>          manage shared agents/skills/commands
 claudectx shell-init [--install]  print/install the shell integration
 ```
@@ -153,6 +155,7 @@ rotation is handled by Claude Code inside each profile's own slot.)
       agents   -> ../../shared/agents     # static dir symlinks (set at `add`)
       skills   -> ../../shared/skills
       commands -> ../../shared/commands
+      claudectx.env                       # optional: per-profile env for `claude` (claudectx-owned)
       .claude.json  backups/  history.jsonl  projects/ …   # CC-owned, isolated
 
 Keychain (managed entirely by Claude Code, not claudectx):
@@ -173,8 +176,14 @@ Authoritative list lives in `architecture.md` ("Open questions"). Summary:
    hold since each profile owns its slot; not yet observed over time.
 2. **Rename / credential portability** — decided: warn-and-relogin (the slot is
    `sha256(dir)`-derived, so a rename orphans the credential).
-3. **`$CLAUDE_CONFIG_DIR/.claude.json` contents** — audit exactly what is isolated
-   there and whether any "global" bits (e.g. settings.json) deserve sharing.
+3. **`$CLAUDE_CONFIG_DIR/.claude.json` contents** — ✅ **resolved (2026-06-19):**
+   keep the whole tree isolated; `.claude.json` holds only per-profile data
+   (identity, machine/install state, caches, onboarding, path-keyed `projects`).
+   `settings.json` stays per-profile (NOT shared) — `model` is profile-specific and
+   CC rewrites the file at runtime via `/model` /`/config`, so a symlink would leak
+   changes across profiles. Power-user escape hatch: a hand-made `settings.json`
+   symlink survives `EnsureSymlinks` (real entries = intentional overrides). See
+   `architecture.md` Open question 3.
 
 (The pre-redesign questions — refresh-token rotation under the single shared slot,
 Keychain ACL after signing, `~/.claude.json` write race — are obsolete: there is no
@@ -209,13 +218,27 @@ release). `.goreleaser.yaml` uses `homebrew_casks` (skipped unless
 full `release --snapshot` produce the darwin amd64/arm64 archives + checksums. First
 release fires on the first `feat:`/`fix:` commit to main (→ v0.1.0 for `feat:`).
 
+**Homebrew cask — DONE (2026-06-19):** `RaphaelNeumann/homebrew-tap` exists with
+`Casks/claudectx.rb` published, the `HOMEBREW_TAP_GITHUB_TOKEN` secret is set, and
+releases are flowing (v0.1.2 shipped 2026-06-19). Commits `cdea032`/`3249f96`/`04ed995`
+iterated the cask (valid env template → quarantine strip → single fqn install cmd).
+
+**Per-profile env — DONE (2026-06-19):** profiles can carry a `claudectx.env`
+(`KEY=VALUE` dotenv) that the launcher loads into the **claude process only** (not the
+shell) on both paths — `use` (`launch.Exec`) and the `claude` wrapper via hidden
+`_exec-claude` (`launch.ExecDir`). Managed with `claudectx envs [name]` / `--edit`.
+Motivating case: a work profile on Google Vertex (`CLAUDE_CODE_USE_VERTEX`, …);
+generalizes to Bedrock/proxy. Provider-side credential isolation (gcloud/ADC) is out of
+scope. Tests: `internal/profile/env_test.go` + `cmd/testdata/script/{launch,envs}.txtar`.
+
+**Open question 3 — RESOLVED (2026-06-19):** whole config tree stays isolated;
+`settings.json` stays per-profile (not shared). Audit + rationale in `architecture.md`
+Open question 3. Document-only; no code change.
+
 **Next:**
 1. Day-2 persistence test (Open question 1): switch away/back + cross an ~8h token
-   refresh without a forced re-login. (Only confirmable over time.)
-2. Resolve Open question 3 (`$CLAUDE_CONFIG_DIR/.claude.json` contents & whether any
-   global bits need sharing).
-3. To enable the Homebrew cask: create `RaphaelNeumann/homebrew-tap` + add the
-   `HOMEBREW_TAP_GITHUB_TOKEN` secret.
+   refresh without a forced re-login. (Only confirmable over time — the last
+   genuinely-open item before v1.)
 
 **Future (deferred):** Linux & Windows support — v1 is macOS-only. Plan + binary
 findings captured in `architecture.md` ("Platform support"). Linux is cheap (CC

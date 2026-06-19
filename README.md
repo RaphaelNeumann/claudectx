@@ -90,6 +90,26 @@ two terminals. Terminal switching requires the shell integration above (a subpro
 can't change its parent shell's environment); without it, `claudectx <name>` prints
 how to enable it, and `claudectx use <name>` / `set default` still work.
 
+### Per-profile environment
+
+A profile can carry extra environment variables that claudectx loads into the
+`claude` process whenever you run it in that profile (only the claude process — not
+your shell). Handy for an account that uses a third-party provider, e.g. Google
+Vertex AI for work:
+
+```sh
+claudectx envs work --edit    # opens work's env file in $EDITOR (KEY=VALUE per line)
+# CLAUDE_CODE_USE_VERTEX=1
+# CLOUD_ML_REGION=us-east5
+# ANTHROPIC_VERTEX_PROJECT_ID=my-gcp-project
+
+claudectx envs work           # show what's set (no name = the active profile)
+```
+
+The vars are stored in `claudectx.env` inside the profile and applied on both
+`claudectx use` and a plain wrapped `claude`. (Isolating provider-side credentials —
+e.g. a separate gcloud/ADC login — is up to you.)
+
 ### Shell completion
 
 ```sh

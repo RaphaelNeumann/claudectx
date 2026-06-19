@@ -15,7 +15,24 @@ stdout 'profiles/personal'
 exec claudectx use personal -- --hello world
 stdout 'args: --hello world'
 
+# Per-profile env (claudectx.env) is loaded into the claude process at launch.
+cp envfile $XDG_CONFIG_HOME/claudectx/profiles/personal/claudectx.env
+exec claudectx use personal
+stdout 'VERTEX=on'
+stdout 'REGION=us-east5'
+
+# The hidden _exec-claude helper (used by the shell `claude` wrapper) applies the
+# same env given an already-resolved dir.
+exec claudectx _exec-claude $XDG_CONFIG_HOME/claudectx/profiles/personal --resume
+stdout 'VERTEX=on'
+stdout 'args: --resume'
+
 -- bin/claude --
 #!/bin/sh
 echo "FAKE CLAUDE CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"
+echo "VERTEX=$CLAUDE_CODE_USE_VERTEX REGION=$CLOUD_ML_REGION"
 echo "args: $@"
+-- envfile --
+# work account
+CLAUDE_CODE_USE_VERTEX=on
+CLOUD_ML_REGION=us-east5
