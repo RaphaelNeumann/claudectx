@@ -34,53 +34,53 @@ go install github.com/raphaelneumann/claudectx@latest
 go build -o claudectx .
 ```
 
+## Setup
+
+Install the shell integration once — it makes `claudectx <name>` switch *this
+terminal* and a plain `claude` follow the chosen profile:
+
+```sh
+claudectx shell-init --install   # appends to ~/.zshrc or ~/.bashrc (idempotent)
+```
+
+Then open a new shell (or `source` the rc file).
+
 ## Usage
 
 ```sh
 claudectx add personal        # create a profile
-claudectx use personal        # launch claude in it (log in the first time)
 claudectx add work
-claudectx use work            # switches the current profile to work
 
-claudectx                     # launch the current profile directly
-claudectx pick                # choose interactively, then launch
+claudectx work                # switch THIS terminal to work
+claude                        # ...runs in work
+claudectx                     # picker: switch this terminal interactively
+claudectx default             # revert this terminal to the default profile
+claudectx current             # show the default + this terminal's profile
+
+claudectx set default work    # change the DEFAULT (new terminals / plain claude)
+
+claudectx use work            # switch and launch claude immediately
+claudectx use work -- -p "summarize the diff"   # ...forwarding args to claude
+
 claudectx list                # list profiles (marks which are logged in)
-claudectx current             # show the current profile
 claudectx rename old new
 claudectx remove work
-
-claudectx use work -- -p "summarize the diff"   # forward args to claude
-
 claudectx shared list         # what's in the shared agents/skills/commands
 ```
 
-### Current profile (persistence)
+### Two scopes: this terminal vs. the default
 
-`claudectx` remembers your current profile, so calling it with no arguments goes
-straight there — no menu. The current profile is resolved in this order:
+- **`claudectx <name>`** (or bare `claudectx` for a picker) switches the profile for
+  **the current terminal only** — like `nvm use`. `claudectx default` reverts it.
+- **`claudectx set default <name>`** changes the **default** profile that new
+  terminals (and a plain `claude` with no override) use — like `nvm alias default`.
+- A plain **`claude`** runs in this terminal's profile if set, otherwise the default.
+  An explicit `CLAUDE_CONFIG_DIR` in the shell always wins.
 
-1. **`--profile <name>`** flag — a one-shot override (does *not* change the saved default):
-   ```sh
-   claudectx --profile work                # launch work this once
-   ```
-2. **`CLAUDECTX_PROFILE`** env var — same one-shot override, via the environment:
-   ```sh
-   CLAUDECTX_PROFILE=work claudectx        # launch work this once
-   ```
-3. **Saved default** — set by `claudectx use <name>` or `claudectx pick`.
-4. **Interactive picker** — only on first run, when nothing is saved yet.
-
-Because profiles are per-process, you can also run **two accounts at once** in two
-terminals.
-
-### Shell shim (optional)
-
-To set `CLAUDE_CONFIG_DIR` for the current shell (so a plain `claude` inherits it):
-
-```sh
-eval "$(claudectx shell-init)"   # in ~/.zshrc
-claudectx-use work
-```
+Because each terminal has its own profile, you can run **two accounts at once** in
+two terminals. Terminal switching requires the shell integration above (a subprocess
+can't change its parent shell's environment); without it, `claudectx <name>` prints
+how to enable it, and `claudectx use <name>` / `set default` still work.
 
 ### Shell completion
 

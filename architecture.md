@@ -161,51 +161,72 @@ There is no partial-failure window: steps 1–3 are local and cheap, and step 4 
 single `exec`. If login is required (fresh profile or expired refresh token), Claude
 Code itself handles the OAuth flow inside that profile's own slot.
 
-### Current profile (no-arg invocation)
+### Two scopes: terminal profile vs. default profile
 
-Bare `claudectx` launches the **current profile** rather than always prompting. The
-current profile is resolved in priority order:
+There are two notions of "current", mirroring `nvm use` vs. `nvm alias default`:
+
+- **Terminal profile** — `CLAUDE_CONFIG_DIR` exported in the shell. Set by
+  `claudectx <name>` / the picker; reverted by `claudectx default`. Affects only the
+  current terminal. **Requires the shell integration** (a binary cannot export to its
+  parent shell).
+- **Default profile** — `state.json` lastUsed. Set by `claudectx set default <name>`.
+  Used by new terminals and any `claude` with no terminal override.
+
+What a plain `claude` uses (resolved by the `claude` wrapper):
 
 ```
-1. --profile <name> flag       → transient override; launch it, do NOT persist
-                                  (error if the named profile does not exist)
-2. CLAUDECTX_PROFILE env var    → same transient override, via the environment
-3. state.json lastUsed          → the saved default; launch it directly
-4. interactive picker           → only when nothing is saved (first run);
-                                  the choice is persisted, then launched
+1. CLAUDE_CONFIG_DIR set in the shell  → use it (terminal override / explicit)
+2. else  `claudectx _current-dir`      → the default profile (state.json lastUsed)
+3. else  plain claude                   → default ~/.claude
 ```
 
-`use <name>` and `pick` both **persist** the choice (write `lastUsed`); the
-`--profile` flag and `CLAUDECTX_PROFILE` overrides deliberately do not, so they stay
-one-shot (flag outranks env). This keeps `state.json` as a convenience default only
-— it is still not authoritative "active" state (multiple profiles can run at once in
-different shells).
+`state.json` is a convenience default, not authoritative "active" state — multiple
+profiles run at once across terminals, each via its own `CLAUDE_CONFIG_DIR`.
 
-### Shell-shim alternative
+### Shell integration
 
-For users who prefer typing plain `claude`, `claudectx` can install a shell function
-that exports `CLAUDE_CONFIG_DIR` for the current shell (`claudectx shell-init`,
-sourced from `~/.zshrc`). The launcher (`use`) is the default and primary path; the
-shim is opt-in. Both set the identical env var.
+`claudectx shell-init` (sourced from `~/.zshrc`/`~/.bashrc`) prints two POSIX
+functions:
+
+- a **`claude` wrapper** — runs the real `claude` with `CLAUDE_CONFIG_DIR` resolved
+  as above (explicit value always wins).
+- a **`claudectx` wrapper** — intercepts the terminal-switching forms and exports
+  `CLAUDE_CONFIG_DIR`, delegating everything else to the binary:
+  - `claudectx` / `pick` / `switch` → `_pick-dir` (picker, UI on stderr) → export
+  - `claudectx <name>` → `_profile-dir <name>` → export
+  - `claudectx default` / `reset` → unset (follow the default)
+  - `add|remove|list|use|set|current|rename|shared|shell-init|completion|…` → binary
+
+Function names contain no hyphens (valid in POSIX sh as well as bash/zsh). Without
+the integration, the binary's `claudectx <name>` / picker print how to enable it;
+`use` and `set default` work regardless.
+
+`claudectx shell-init --install` appends the `eval` line to the shell rc file
+(`~/.zshrc`/`~/.bashrc` from `$SHELL`, or `--rc <file>`), idempotently. fish is
+unsupported (different function syntax).
 
 ---
 
 ## Planned commands
 
+(Forms marked † are terminal-scoped and run through the shell-init `claudectx`
+function.)
+
 ```
-claudectx                      launch the current profile (env > saved > picker)
-claudectx use <name> [args…]   set current = <name> and exec claude (forwards args)
-claudectx pick                 choose interactively, persist, and launch
+claudectx †                    picker → switch THIS terminal's profile
+claudectx <name> †             switch this terminal to <name>
+claudectx default †            revert this terminal to the default profile
+claudectx pick | switch †      same as bare claudectx
+claudectx set default <name>   change the DEFAULT profile (new terminals)
+claudectx use <name> [args…]   switch AND exec claude (forwards args after --)
 claudectx add <name>           create profiles/<name>/ + shared-layer symlinks
 claudectx remove <name>        delete a profile dir (prompts; never touches shared/)
 claudectx list                 list profiles, mark which have a credential slot
-claudectx current              print the current profile (+ this shell's session)
+claudectx current              print the default + this terminal's profile
 claudectx rename <old> <new>   rename a profile dir + its Keychain slot follows*
 claudectx shared <cmd>         manage shared agents/skills/commands
-claudectx shell-init           print shell function for the env-var shim
+claudectx shell-init [--install]  print/install the shell integration
 ```
-
-Override the current profile for a single invocation with `CLAUDECTX_PROFILE=<name>`.
 
 \* **Rename caveat:** the Keychain slot name is `sha256(dir)`-derived, so renaming a
 profile dir changes its slot and would orphan the old credential → forces re-login in

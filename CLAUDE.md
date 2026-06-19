@@ -117,21 +117,26 @@ Results:
 ## Planned commands
 
 ```
-claudectx                       launch the current profile (env > saved > picker)
-claudectx use <name> [args…]    set current = <name> and exec claude (forwards args)
-claudectx pick                  choose interactively, persist, and launch
+claudectx †                     picker → switch THIS terminal's profile
+claudectx <name> †              switch this terminal to <name>
+claudectx default †             revert this terminal to the default profile
+claudectx pick | switch †       same as bare claudectx
+claudectx set default <name>    change the DEFAULT profile (new terminals)
+claudectx use <name> [args…]    switch AND exec claude (forwards args after --)
 claudectx add <name>            create profile dir + shared-layer symlinks
 claudectx remove <name>         delete a profile dir (never touches shared/)
 claudectx list                  list profiles, mark which have a credential slot
-claudectx current               print the current profile (+ this shell's session)
+claudectx current               print the default + this terminal's profile
 claudectx rename <old> <new>    rename a profile (warns: slot is dir-derived → re-login)
 claudectx shared <cmd>          manage shared agents/skills/commands
-claudectx shell-init            print shell function for the env-var shim
+claudectx shell-init [--install]  print/install the shell integration
 ```
 
-Current-profile persistence: bare `claudectx` resolves `--profile` flag → `CLAUDECTX_PROFILE`
-env (both one-shot overrides) → saved `lastUsed` → picker (first run only).
-`use`/`pick` persist; the flag/env overrides do not. (No `refresh` command — token
+† = terminal-scoped; runs through the shell-init `claudectx` function (a binary
+can't export to its parent shell). **Two scopes** (like nvm use vs nvm alias
+default): the **terminal profile** is `CLAUDE_CONFIG_DIR` exported by the function;
+the **default profile** is `state.json` lastUsed (set via `set default`). `claude`
+uses the terminal override if set, else the default. (No `refresh` command — token
 rotation is handled by Claude Code inside each profile's own slot.)
 
 ---
