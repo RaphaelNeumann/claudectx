@@ -42,18 +42,19 @@ changelog:
       - "^test:"
       - "^chore:"
 
-brews:
+homebrew_casks:
   - name: claudectx
+    binaries:
+      - claudectx
     repository:
       owner: RaphaelNeumann
       name: homebrew-tap
+      token: '{{ envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "" }}'
+    # Skip publishing the cask unless a tap token is configured, so the core
+    # release (binaries + checksums) succeeds even before the tap repo exists.
+    skip_upload: '{{ eq (envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "") "" }}'
     homepage: "https://github.com/RaphaelNeumann/claudectx"
-    description: "Switch between isolated Claude Code profiles on macOS"
-    license: "MIT"
-    install: |
-      bin.install "claudectx"
-    test: |
-      system "#{bin}/claudectx", "--version"
+    description: "Switch between multiple Claude Code accounts"
 
 release:
   github:
