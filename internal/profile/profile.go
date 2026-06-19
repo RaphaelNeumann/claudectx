@@ -66,7 +66,8 @@ func EnsureShared() error {
 
 // EnsureSymlinks makes each profiles/<name>/<sub> a symlink to ../../shared/<sub>.
 // It self-heals broken or wrong symlinks. A real (non-symlink) entry is treated as
-// an intentional per-profile override and left untouched.
+// an intentional per-profile override and left untouched. It also seeds CLAUDE.md
+// if missing (backfills profiles created before this feature).
 func EnsureSymlinks(name string) error {
 	pdir, err := paths.ProfileDir(name)
 	if err != nil {
@@ -100,7 +101,7 @@ func EnsureSymlinks(name string) error {
 			// real dir/file present — per-profile override, leave as-is
 		}
 	}
-	return nil
+	return seedClaudeMD(name, pdir)
 }
 
 // Add creates a new profile directory and its shared-layer symlinks.
@@ -118,7 +119,35 @@ func Add(name string) error {
 	if err := os.MkdirAll(pdir, 0o700); err != nil {
 		return err
 	}
-	return EnsureSymlinks(name)
+	if err := EnsureSymlinks(name); err != nil {
+		return err
+	}
+	return seedClaudeMD(name, pdir)
+}
+
+// seedClaudeMD writes a CLAUDE.md into the profile directory if one does not
+// already exist. The file is loaded by Claude Code as user-level instructions
+// for every session under this profile, telling it that settings changes belong
+// in the profile's own settings.json (not ~/.claude/settings.json).
+func seedClaudeMD(name, pdir string) error {
+	p := filepath.Join(pdir, "CLAUDE.md")
+	if _, err := os.Stat(p); err == nil {
+		return nil // already exists — don't overwrite user customizations
+	}
+	content := fmt.Sprintf(`# claudectx profile: %s
+
+This session is running under a claudectx profile. The profile's config
+directory is $CLAUDE_CONFIG_DIR (this directory).
+
+**Settings changes (model, effort, theme, etc.) MUST be made in this
+directory's settings.json, NOT in ~/.claude/settings.json.** Claude Code
+always loads ~/.claude/settings.json as a global baseline — any setting
+placed there overrides all profiles, defeating per-profile isolation.
+
+Use /config or /model within the session (they write to the correct
+$CLAUDE_CONFIG_DIR/settings.json), or edit the file directly.
+`, name)
+	return os.WriteFile(p, []byte(content), 0o644)
 }
 
 // Remove deletes a profile directory. It refuses to remove anything that is not a
