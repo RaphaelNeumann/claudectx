@@ -1,0 +1,22 @@
+# shell-init: print vs --install
+[windows] skip
+
+# print form defines the claude wrapper and the claudectx wrapper
+exec claudectx shell-init
+stdout 'claude\(\)'
+stdout 'claudectx\(\)'
+
+# --install appends the eval line to the given rc file
+exec claudectx shell-init --install --rc $WORK/rc
+exists $WORK/rc
+grep 'eval "\$\(claudectx shell-init\)"' $WORK/rc
+stdout 'added claudectx shell integration'
+
+# idempotent: a second install is a no-op
+exec claudectx shell-init --install --rc $WORK/rc
+stdout 'already present'
+
+# unsupported shell with no rc errors
+env SHELL=/usr/bin/fish
+! exec claudectx shell-init --install
+stderr 'fish is not supported'

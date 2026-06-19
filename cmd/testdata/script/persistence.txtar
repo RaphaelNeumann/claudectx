@@ -1,57 +1,37 @@
-# Persistence of the current profile + CLAUDECTX_PROFILE override.
-# Fake `claude` on PATH prints the CLAUDE_CONFIG_DIR it was launched with.
+# Default profile vs. per-terminal session profile.
 [windows] skip
-
-chmod 0777 bin/claude
-env PATH=$WORK/bin:$PATH
 
 exec claudectx add personal
 exec claudectx add work
 
-# `use` sets the current profile and launches it.
-exec claudectx use personal
-stdout 'profiles/personal'
-
-# Bare `claudectx` now launches the saved current directly (no picker).
-exec claudectx
-stdout 'profiles/personal'
-
-# `current` reports the saved default.
+# `set default` persists the default profile.
+exec claudectx set default personal
+stdout 'default profile set to "personal"'
 exec claudectx current
-stdout 'current: personal \(saved default\)'
+stdout 'default profile: personal'
+stdout 'this terminal:   \(following the default\)'
 
-# CLAUDECTX_PROFILE overrides for this invocation...
-env CLAUDECTX_PROFILE=work
-exec claudectx
-stdout 'profiles/work'
+# the shell-init `claude` wrapper resolves the default via _current-dir.
+exec claudectx _current-dir
+stdout 'profiles/personal'
+
+# raw `claudectx <name>` (no shell function) only hints; it does NOT change the default.
+exec claudectx work
+stdout 'To switch this terminal'
+stdout 'claudectx use work'
 exec claudectx current
-stdout 'CLAUDECTX_PROFILE'
+stdout 'default profile: personal'
 
-# ...but does not change the saved default: unset → back to personal.
-env CLAUDECTX_PROFILE=
-exec claudectx
-stdout 'profiles/personal'
-
-# The --profile flag is a one-shot override too, and outranks the env var.
-exec claudectx --profile work
-stdout 'profiles/work'
-exec claudectx
-stdout 'profiles/personal'
-! exec claudectx --profile ghost
+# setting an unknown default errors.
+! exec claudectx set default ghost
 stderr 'does not exist'
 
-# A non-existent override errors clearly.
-env CLAUDECTX_PROFILE=ghost
-! exec claudectx
-stderr 'does not exist'
-env CLAUDECTX_PROFILE=
-
-# Switching the current with `use` persists the new choice.
-exec claudectx use work
-stdout 'profiles/work'
-exec claudectx
+# `_profile-dir` resolves a profile to its dir (used by the shell function).
+exec claudectx _profile-dir work
 stdout 'profiles/work'
 
--- bin/claude --
-#!/bin/sh
-echo "FAKE CLAUDE CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"
+# a per-terminal override (CLAUDE_CONFIG_DIR) is reported as this terminal's profile.
+env CLAUDE_CONFIG_DIR=$WORK/xdg/claudectx/profiles/work
+exec claudectx current
+stdout 'default profile: personal'
+stdout 'this terminal:   work'

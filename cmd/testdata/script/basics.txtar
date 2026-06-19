@@ -35,9 +35,9 @@ stderr 'path separators'
 ! exec claudectx add personal
 stderr 'already exists'
 
-# current with nothing saved reports none set.
+# current with nothing saved reports no default.
 exec claudectx current
-stdout 'none set'
+stdout 'default profile: none'
 
 # Rename moves the profile and keeps the shared symlinks.
 exec claudectx rename work office

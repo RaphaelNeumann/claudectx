@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -17,94 +18,127 @@ import (
 // version is overridden at release time via -ldflags -X.
 var version = "dev"
 
-// profileEnv overrides the current profile for a single invocation, without
-// changing the saved default.
-const profileEnv = "CLAUDECTX_PROFILE"
-
 var rootCmd = &cobra.Command{
-	Use:   "claudectx",
-	Short: "Switch between isolated Claude Code profiles",
-	Long: "claudectx manages multiple isolated Claude Code profiles (one per account)\n" +
-		"and launches `claude` into the chosen one via CLAUDE_CONFIG_DIR.\n\n" +
-		"With no arguments it launches the current profile, resolved in order:\n" +
-		"  --profile flag → CLAUDECTX_PROFILE env → saved current → picker (first run).\n" +
-		"Use `claudectx use <name>` to change the saved current, or `claudectx pick`\n" +
-		"to choose interactively.",
+	Use:   "claudectx [profile]",
+	Short: "Switch the Claude Code profile for your terminal",
+	Long: "claudectx manages multiple isolated Claude Code profiles (one per account).\n\n" +
+		"With the shell integration (`claudectx shell-init`):\n" +
+		"  claudectx              pick a profile for THIS terminal\n" +
+		"  claudectx <name>       switch THIS terminal to <name>\n" +
+		"  claudectx default      revert this terminal to the default profile\n" +
+		"  claudectx set default <name>   change the DEFAULT profile (new terminals)\n\n" +
+		"A plain `claude` then runs in the terminal's profile (or the default).",
 	Version: version,
-	Args:    cobra.NoArgs,
+	Args:    cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		p, _ := cmd.Flags().GetString("profile")
-		return runRoot(p)
+		if len(args) == 1 {
+			return printSwitchHint(args[0])
+		}
+		return printStatus()
 	},
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
 
-func init() {
-	rootCmd.Flags().String("profile", "", "launch this profile for one invocation (overrides the saved default)")
+// defaultProfile returns the persisted default profile name (state.json), or "".
+func defaultProfile() string {
+	if st, err := store.Load(); err == nil {
+		return st.LastUsed
+	}
+	return ""
 }
 
-// resolveCurrent returns the profile that bare `claudectx` would launch and its
-// source: "env" (CLAUDECTX_PROFILE), "saved" (persisted default), or "" (none).
-func resolveCurrent() (name, source string) {
-	if p := strings.TrimSpace(os.Getenv(profileEnv)); p != "" {
-		return p, "env"
+// integrationStatus reports whether the shell integration is installed in a known
+// rc file, and which file.
+func integrationStatus() (installed bool, rc string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false, ""
 	}
-	if st, err := store.Load(); err == nil && st.LastUsed != "" {
-		return st.LastUsed, "saved"
+	var candidates []string
+	if z := os.Getenv("ZDOTDIR"); z != "" {
+		candidates = append(candidates, filepath.Join(z, ".zshrc"))
 	}
-	return "", ""
-}
-
-// runRoot handles the no-argument invocation: launch the current profile, or fall
-// back to the picker on first run. flagProfile is the --profile value (one-shot
-// override; highest precedence, does not persist).
-func runRoot(flagProfile string) error {
-	if p := strings.TrimSpace(flagProfile); p != "" {
-		if !profile.Exists(p) {
-			return fmt.Errorf("--profile %q: profile does not exist (run `claudectx add %s`)", p, p)
+	candidates = append(candidates,
+		filepath.Join(home, ".zshrc"),
+		filepath.Join(home, ".bashrc"),
+		filepath.Join(home, ".bash_profile"),
+	)
+	for _, f := range candidates {
+		if data, err := os.ReadFile(f); err == nil && strings.Contains(string(data), "claudectx shell-init") {
+			return true, f
 		}
-		return launch.Exec(p, nil)
 	}
-	name, source := resolveCurrent()
-	switch source {
-	case "env":
-		if !profile.Exists(name) {
-			return fmt.Errorf("%s=%q: profile does not exist (run `claudectx add %s`)", profileEnv, name, name)
-		}
-		return launch.Exec(name, nil) // transient override — do not persist
-	case "saved":
-		if profile.Exists(name) {
-			return launch.Exec(name, nil) // already the saved default — no need to re-persist
-		}
-		// saved profile was removed; fall through to the picker
-	}
-	return runPicker()
+	return false, ""
 }
 
-// Execute runs the root command.
-func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
+// integrationGuidance auto-detects whether the integration is installed and returns
+// the appropriate next step (restart vs. install).
+func integrationGuidance() string {
+	if installed, rc := integrationStatus(); installed {
+		return fmt.Sprintf("shell integration is installed in %s — open a new terminal (or `source %s`)", rc, rc)
 	}
+	return "enable it:  claudectx shell-init --install   (then restart your shell)"
 }
 
-// useProfile records the selection and execs claude in the profile. On success it
-// does not return.
-func useProfile(name string, args []string) error {
-	_ = store.SetLastUsed(name) // best-effort; exec replaces the process next
-	return launch.Exec(name, args)
-}
-
-// runPicker shows an interactive profile selector, defaulting to the last used.
-func runPicker() error {
+// printStatus is shown for bare `claudectx` when the shell integration is not active
+// in this shell. It shows the profiles and how to switch.
+func printStatus() error {
 	infos, err := profile.List()
 	if err != nil {
 		return err
 	}
 	if len(infos) == 0 {
-		return errors.New("no profiles yet — create one with `claudectx add <name>`")
+		fmt.Println("claudectx — no profiles yet. Create one:  claudectx add <name>")
+		return nil
+	}
+
+	def := defaultProfile()
+	fmt.Println("claudectx — switch Claude Code profiles")
+	fmt.Println()
+	fmt.Println("Profiles (* = default):")
+	for _, in := range infos {
+		marker := "  "
+		if in.Name == def {
+			marker = "* "
+		}
+		status := "no credential"
+		if in.HasCredential {
+			status = "logged in"
+		}
+		fmt.Printf("  %s%-18s %s\n", marker, in.Name, status)
+	}
+	fmt.Println()
+	fmt.Printf("To switch THIS terminal's profile, %s,\n", integrationGuidance())
+	fmt.Println("then:  claudectx <name>")
+	fmt.Println()
+	fmt.Println("Other commands:")
+	fmt.Println("  claudectx use <name>          switch and launch claude now")
+	fmt.Println("  claudectx set default <name>  change the default profile")
+	fmt.Println("  claudectx --help              all commands")
+	return nil
+}
+
+// printSwitchHint is shown for `claudectx <name>` without the shell integration.
+func printSwitchHint(name string) error {
+	if !profile.Exists(name) {
+		return fmt.Errorf("profile %q does not exist (run `claudectx add %s`)", name, name)
+	}
+	fmt.Printf("To switch this terminal to %q, %s,\n", name, integrationGuidance())
+	fmt.Printf("then:  claudectx %s\n", name)
+	fmt.Printf("Or launch it now:  claudectx use %s\n", name)
+	return nil
+}
+
+// pickProfile shows the interactive selector (rendered to stderr so stdout stays
+// clean for capture) and returns the chosen profile name, or "" if aborted.
+func pickProfile() (string, error) {
+	infos, err := profile.List()
+	if err != nil {
+		return "", err
+	}
+	if len(infos) == 0 {
+		return "", errors.New("no profiles yet — create one with `claudectx add <name>`")
 	}
 
 	st, _ := store.Load()
@@ -122,16 +156,30 @@ func runPicker() error {
 		choice = infos[0].Name
 	}
 
-	form := huh.NewSelect[string]().
-		Title("Select a Claude Code profile").
+	sel := huh.NewSelect[string]().
+		Title("Switch this terminal to which Claude Code profile?").
 		Options(options...).
 		Value(&choice)
-
-	if err := form.Run(); err != nil {
+	if err := huh.NewForm(huh.NewGroup(sel)).WithOutput(os.Stderr).Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			return nil
+			return "", nil
 		}
-		return err
+		return "", err
 	}
-	return useProfile(choice, nil)
+	return choice, nil
+}
+
+// Execute runs the root command.
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+}
+
+// useProfile records the selection and execs claude in the profile. On success it
+// does not return.
+func useProfile(name string, args []string) error {
+	_ = store.SetLastUsed(name) // best-effort; exec replaces the process next
+	return launch.Exec(name, args)
 }
