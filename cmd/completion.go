@@ -24,10 +24,13 @@ var completionCmd = &cobra.Command{
 		"  claudectx completion zsh             # print the zsh script\n" +
 		"  claudectx completion zsh --install   # install it for zsh\n" +
 		"  claudectx completion install         # install for your current shell",
-	Args:                  cobra.ExactArgs(1),
+	Args:                  cobra.MaximumNArgs(1),
 	ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
 	DisableFlagsInUseLine: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return cmd.Help()
+		}
 		if completionDoInstall {
 			return installCompletion(args[0], completionInstallDir)
 		}
